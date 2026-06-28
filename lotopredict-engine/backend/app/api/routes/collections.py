@@ -106,6 +106,27 @@ async def delete_collection(collection_id: int, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Erro ao excluir coleção: {str(e)}")
 
+class CollectionUpdate(BaseModel):
+    name: str = Field(..., min_length=2, max_length=100, description="Novo nome personalizado para a coleção")
+
+@router.put("/collections/{collection_id}", response_model=Dict[str, Any])
+async def update_collection(collection_id: int, update_data: CollectionUpdate, db: Session = Depends(get_db)):
+    """
+    Atualiza o nome personalizado de uma coleção de apostas no banco de dados SQLite.
+    """
+    col = db.query(GameCollection).filter(GameCollection.id == collection_id).first()
+    if not col:
+        raise HTTPException(status_code=404, detail="Coleção não encontrada.")
+        
+    try:
+        col.name = update_data.name
+        db.commit()
+        db.refresh(col)
+        return {"message": "Coleção atualizada com sucesso.", "id": col.id, "name": col.name}
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"Erro ao atualizar coleção: {str(e)}")
+
 @router.get("/collections/{collection_id}", response_model=Dict[str, Any])
 async def get_collection_detail(collection_id: int, db: Session = Depends(get_db)):
     """

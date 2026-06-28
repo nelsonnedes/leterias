@@ -297,3 +297,12 @@ export const getLocalCollectionDetail = (id: number) => {
     checking_summary
   };
 };
+
+export const updateLocalCollection = (id: number, newName: string) => {
+  const cols = getLocalCollections();
+  const idx = cols.findIndex(c => c.id === id);
+  if (idx !== -1) {
+    cols[idx].name = newName;
+    localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cols));
+  }
+};

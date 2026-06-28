@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useApi, type GameCollection, type CollectionDetail } from '../hooks/useApi';
-import { Trash2, ChevronRight, Award, Calendar, RefreshCw, X } from 'lucide-react';
+import { Trash2, ChevronRight, Award, Calendar, RefreshCw, X, Edit2, Check } from 'lucide-react';
 
 export const CollectionsPage: React.FC = () => {
   const api = useApi();
@@ -9,6 +9,10 @@ export const CollectionsPage: React.FC = () => {
   const [loading, setLoading] = useState<boolean>(true);
   const [detailLoading, setDetailLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Estados para edição do nome
+  const [isEditing, setIsEditing] = useState<boolean>(false);
+  const [editName, setEditName] = useState<string>('');
 
   const fetchCollections = async () => {
     setLoading(true);
@@ -26,6 +30,7 @@ export const CollectionsPage: React.FC = () => {
 
   const handleSelectCollection = async (id: number) => {
     setDetailLoading(true);
+    setIsEditing(false);
     try {
       const data = await api.getCollectionDetail(id);
       setSelectedCol(data);
@@ -49,6 +54,47 @@ export const CollectionsPage: React.FC = () => {
     } catch (err: any) {
       console.error('Erro ao deletar coleção:', err);
     }
+  };
+
+  const handleSaveName = async () => {
+    if (!editName.trim() || !selectedCol) return;
+    try {
+      await api.updateCollectionName(selectedCol.id, editName.trim());
+      setIsEditing(false);
+      fetchCollections();
+      // Atualiza o detalhe carregado com o novo nome
+      setSelectedCol({
+        ...selectedCol,
+        name: editName.trim()
+      });
+    } catch (err: any) {
+      console.error('Erro ao atualizar nome da coleção:', err);
+    }
+  };
+
+  const handleShareWhatsApp = () => {
+    if (!selectedCol) return;
+    
+    let text = `📊 *LotoPredict Engine - Conferência de Apostas*\n`;
+    text += `*Coleção:* ${selectedCol.name}\n`;
+    text += `*Loteria:* ${selectedCol.lottery_name}\n`;
+    
+    if (selectedCol.last_real_draw) {
+      text += `*Concurso:* ${selectedCol.last_real_draw.reference}\n`;
+      text += `*Dezenas Sorteadas:* ${selectedCol.last_real_draw.numbers.map(n => String(n).padStart(2, '0')).join(', ')}\n\n`;
+    }
+    
+    text += `*Resultados das Apostas:*\n`;
+    selectedCol.checking_summary.forEach(res => {
+      const gameStr = res.game.map(n => String(n).padStart(2, '0')).join(' ');
+      const awardStr = res.award_achieved !== 'Nenhum' ? `🏆 (${res.award_achieved})` : '';
+      text += `- Jogo #${res.game_index}: [ ${gameStr} ] ➜ *${res.hits_count} acertos* ${awardStr}\n`;
+    });
+    
+    text += `\nCalcule seus jogos online no LotoPredict Engine:\nhttps://frontend-delta-six-13.vercel.app/`;
+    
+    const url = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
+    window.open(url, '_blank');
   };
 
   useEffect(() => {
@@ -145,7 +191,7 @@ export const CollectionsPage: React.FC = () => {
           ) : selectedCol ? (
             <div className="space-y-6">
               {/* Cabeçalho da Coleção */}
-              <div className="glass-panel p-6 rounded-2xl relative overflow-hidden">
+              <div className="glass-panel p-6 rounded-2xl relative overflow-hidden space-y-4">
                 <button
                   onClick={() => setSelectedCol(null)}
                   className="absolute top-4 right-4 p-2 bg-dark-bg/60 hover:bg-dark-card rounded-lg text-gray-400 hover:text-white transition-all cursor-pointer"
@@ -153,11 +199,65 @@ export const CollectionsPage: React.FC = () => {
                   <X className="w-4 h-4" />
                 </button>
                 
-                <h3 className="text-2xl font-bold text-white">{selectedCol.name}</h3>
-                <p className="text-sm text-gray-400 mt-1">Loteria: <span className="font-semibold text-blue-400">{selectedCol.lottery_name}</span></p>
+                {/* Nome e Edição */}
+                {isEditing ? (
+                  <div className="flex flex-1 max-w-md gap-2 items-center">
+                    <input 
+                      type="text" 
+                      value={editName}
+                      onChange={(e) => setEditName(e.target.value)}
+                      required
+                      className="flex-1 bg-dark-bg border border-dark-border rounded-xl px-4 py-2 text-white focus:outline-none focus:border-blue-500 text-sm transition-all duration-300 font-bold"
+                    />
+                    <button
+                      onClick={handleSaveName}
+                      className="p-2.5 bg-green-600 hover:bg-green-700 text-white rounded-xl transition-all cursor-pointer"
+                      title="Salvar nome"
+                    >
+                      <Check className="w-4 h-4" />
+                    </button>
+                    <button
+                      onClick={() => setIsEditing(false)}
+                      className="p-2.5 bg-red-500/10 hover:bg-red-500/20 text-red-400 rounded-xl transition-all cursor-pointer"
+                      title="Cancelar"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <h3 className="text-2xl font-bold text-white m-0 leading-none">{selectedCol.name}</h3>
+                    <button
+                      onClick={() => {
+                        setEditName(selectedCol.name);
+                        setIsEditing(true);
+                      }}
+                      className="p-1.5 bg-dark-bg/60 hover:bg-dark-card border border-dark-border rounded-lg text-gray-400 hover:text-white transition-all cursor-pointer"
+                      title="Editar nome"
+                    >
+                      <Edit2 className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+
+                <div className="flex flex-wrap items-center gap-4 text-sm text-gray-400 mt-1">
+                  <p className="m-0">Loteria: <span className="font-semibold text-blue-400">{selectedCol.lottery_name}</span></p>
+                  
+                  {/* Botão do WhatsApp */}
+                  <button
+                    onClick={handleShareWhatsApp}
+                    className="px-3.5 py-1.5 bg-[#25D366]/10 hover:bg-[#25D366]/20 border border-[#25D366]/20 text-[#25D366] font-bold rounded-xl flex items-center gap-2 transition-all duration-300 cursor-pointer text-xs"
+                    title="Compartilhar no WhatsApp"
+                  >
+                    <svg className="w-3.5 h-3.5 fill-current" viewBox="0 0 24 24">
+                      <path d="M.057 24l1.687-6.163c-1.041-1.804-1.588-3.849-1.587-5.946C.06 5.348 5.397.01 12.008.01c3.202.001 6.212 1.246 8.477 3.514 2.266 2.268 3.507 5.28 3.505 8.484-.004 6.657-5.34 11.997-11.953 11.997-2.005-.001-3.973-.502-5.724-1.457L0 24zm6.59-4.846c1.6.95 3.188 1.449 4.825 1.451 5.436 0 9.86-4.37 9.864-9.799.002-2.63-1.023-5.101-2.885-6.97C16.528 2.016 14.069 1.002 11.45 1c-5.449 0-9.873 4.369-9.877 9.8-.002 1.758.463 3.479 1.343 4.978L1.87 20.25l4.777-1.096z"/>
+                    </svg>
+                    WhatsApp
+                  </button>
+                </div>
 
                 {selectedCol.last_real_draw ? (
-                  <div className="mt-6 p-4 bg-dark-bg/40 border border-dark-border rounded-xl space-y-3">
+                  <div className="mt-4 p-4 bg-dark-bg/40 border border-dark-border rounded-xl space-y-3">
                     <div className="flex items-center gap-2 text-sm text-gray-300 font-semibold">
                       <Award className="w-5 h-5 text-green-400" />
                       Conferido contra: {selectedCol.last_real_draw.reference}
