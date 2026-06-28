@@ -123,8 +123,17 @@ export interface CollectionDetail {
 }
 
 // Helper para verificar se o erro foi de conexão recusada ou offline
+// Trata 404 como 'backend indisponível' para ativar fallback offline (ex: Vercel sem backend)
 const isNetworkError = (error: any): boolean => {
-  return !error.response && (!error.status || error.code === 'ERR_NETWORK' || error.message.includes('timeout'));
+  // Se não houve resposta HTTP (conexão recusada, timeout, etc)
+  if (!error.response) {
+    return !error.status || error.code === 'ERR_NETWORK' || error.message.includes('timeout');
+  }
+  // Se houve resposta 404, o backend não está disponível neste domínio (ex: Vercel sem backend)
+  if (error.response.status === 404) {
+    return true;
+  }
+  return false;
 };
 
 export const useApi = () => {
