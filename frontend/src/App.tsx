@@ -6,7 +6,7 @@ import { GeneratorPage } from './pages/GeneratorPage';
 import { CollectionsPage } from './pages/CollectionsPage';
 import { BacktestPage } from './pages/BacktestPage';
 import { ClosingPage } from './pages/ClosingPage';
-import { LayoutDashboard, Sparkles, FolderHeart, BarChart3, Heart, Mail, Check, Copy, X, Layers, Download, Smartphone } from 'lucide-react';
+import { LayoutDashboard, Sparkles, FolderHeart, BarChart3, Heart, Mail, Check, Copy, X, Layers, Download, Smartphone, Eye } from 'lucide-react';
 
 // Função de cálculo de CRC16 CCITT oficial para o Pix
 function crc16(data: string): string {
@@ -55,6 +55,7 @@ function App() {
   const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
   const [isAppInstalled, setIsAppInstalled] = useState<boolean>(false);
   const [showUpdateBanner, setShowUpdateBanner] = useState<boolean>(false);
+  const [visitCount, setVisitCount] = useState<number | null>(null);
 
   const handleNavigateToGenerator = (lottery: string) => {
     setPreselectedLottery(lottery);
@@ -80,6 +81,25 @@ function App() {
     const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
       (window.navigator as any).standalone === true;
     setIsAppInstalled(isStandalone);
+  }, []);
+
+  // Contador de visitas via CountAPI
+  useEffect(() => {
+    const key = 'lotopredict-engine';
+    const ns = 'nelsonbrito';
+    
+    // Incrementa e obtém o contador
+    fetch(`https://api.countapi.xyz/hit/${ns}/${key}`)
+      .then(res => res.json())
+      .then(data => {
+        if (data && data.value) setVisitCount(data.value);
+      })
+      .catch(() => {
+        // Fallback silencioso: conta localmente
+        const localCount = parseInt(localStorage.getItem('lotopredict_visits') || '0') + 1;
+        localStorage.setItem('lotopredict_visits', String(localCount));
+        setVisitCount(localCount);
+      });
   }, []);
 
   // Intercepta o evento beforeinstallprompt (Chrome/Android/Samsung)
@@ -232,6 +252,14 @@ function App() {
             </button>
           </div>
           
+          {/* Contador de Visitas */}
+          {visitCount !== null && (
+            <div className="flex items-center gap-2 text-[11px] text-gray-500 bg-dark-bg/40 border border-dark-border px-4 py-1.5 rounded-full">
+              <Eye className="w-3.5 h-3.5" />
+              <span><strong className="text-gray-300 font-bold">{visitCount.toLocaleString('pt-BR')}</strong> visitas</span>
+            </div>
+          )}
+
           {/* Textos Centralizados */}
           <div className="space-y-1.5 text-center">
             <p className="m-0">© 2026 LotoPredict Engine. Construído sob fundamentos matemáticos e de probabilidade.</p>

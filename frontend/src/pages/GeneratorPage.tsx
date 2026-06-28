@@ -193,7 +193,7 @@ export const GeneratorPage: React.FC<GeneratorPageProps> = ({ initialLottery = '
               {saveSuccess && (
                 <div className="p-4 bg-green-950/20 border border-green-900/30 text-green-400 rounded-xl flex items-center gap-2 text-sm font-medium">
                   <CheckCircle2 className="w-5 h-5" />
-                  Coleção de apostas salva com sucesso no SQLite! Acesse a aba "Minhas Coleções" para conferir.
+                  Coleção salva com sucesso neste dispositivo! Acesse "Minhas Coleções" para conferir e acompanhar os resultados.
                 </div>
               )}
 

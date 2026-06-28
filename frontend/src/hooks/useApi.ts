@@ -260,112 +260,43 @@ export const useApi = () => {
     }
   };
 
-  // Salvar uma nova coleção
+  // Salvar uma nova coleção (apenas localStorage — privado por dispositivo)
   const saveCollection = async (
     name: string,
     lotteryName: string,
     games: number[][]
   ): Promise<any> => {
-    try {
-      const res = await api.post('/collections', {
-        name,
-        lottery_name: lotteryName,
-        games
-      });
-      return res.data;
-    } catch (err: any) {
-      if (isNetworkError(err)) {
-        console.warn('API local offline. Salvando no localStorage do navegador.');
-        return saveLocalCollection(name, lotteryName, games);
-      }
-      throw err;
-    }
+    return saveLocalCollection(name, lotteryName, games);
   };
 
-  // Listar todas as coleções (mesclando as coleções do SQLite e as do localStorage)
+  // Listar todas as coleções (apenas localStorage — privado por dispositivo)
   const listCollections = async (): Promise<GameCollection[]> => {
-    const locals = getLocalCollections().map(c => ({
+    return getLocalCollections().map(c => ({
       id: c.id,
-      name: `${c.name} (Offline)`,
+      name: c.name,
       lottery_name: c.lottery_name,
       total_games: c.games.length,
       created_at: c.created_at
     }));
-
-    try {
-      const res = await api.get('/collections');
-      const apiCols = res.data;
-      return [...apiCols, ...locals];
-    } catch (err: any) {
-      if (isNetworkError(err)) {
-        console.warn('API local offline. Listando coleções do localStorage.');
-        return locals;
-      }
-      throw err;
-    }
   };
 
-  // Obter detalhes da coleção e conferir acertos
+  // Obter detalhes da coleção e conferir acertos (apenas localStorage)
   const getCollectionDetail = async (id: number): Promise<CollectionDetail> => {
-    // Se o ID for de timestamp (localStorage)
-    if (id > 1000000000000) {
-      const detail = getLocalCollectionDetail(id);
-      if (detail) return detail;
-      throw new Error('Coleção local não encontrada.');
-    }
-
-    try {
-      const res = await api.get(`/collections/${id}`);
-      return res.data;
-    } catch (err: any) {
-      if (isNetworkError(err)) {
-        console.warn('API local offline. Buscando detalhe de coleção do localStorage.');
-        const detail = getLocalCollectionDetail(id);
-        if (detail) return detail;
-      }
-      throw err;
-    }
+    const detail = getLocalCollectionDetail(id);
+    if (detail) return detail;
+    throw new Error('Coleção não encontrada neste dispositivo.');
   };
 
-  // Excluir uma coleção
+  // Excluir uma coleção (apenas localStorage)
   const deleteCollection = async (id: number): Promise<any> => {
-    // Se o ID for de timestamp (localStorage)
-    if (id > 1000000000000) {
-      deleteLocalCollection(id);
-      return { message: 'Coleção offline excluída com sucesso.' };
-    }
-
-    try {
-      const res = await api.delete(`/collections/${id}`);
-      return res.data;
-    } catch (err: any) {
-      if (isNetworkError(err)) {
-        console.warn('API local offline. Excluindo coleção do localStorage.');
-        deleteLocalCollection(id);
-        return { message: 'Coleção offline excluída com sucesso.' };
-      }
-      throw err;
-    }
+    deleteLocalCollection(id);
+    return { message: 'Coleção excluída com sucesso deste dispositivo.' };
   };
 
-  // Atualizar o nome da coleção
+  // Atualizar o nome da coleção (apenas localStorage)
   const updateCollectionName = async (id: number, newName: string): Promise<any> => {
-    if (id > 1000000000000) {
-      updateLocalCollection(id, newName);
-      return { message: 'Coleção local atualizada com sucesso.' };
-    }
-
-    try {
-      const res = await api.put(`/collections/${id}`, { name: newName });
-      return res.data;
-    } catch (err: any) {
-      if (isNetworkError(err)) {
-        console.warn('API local offline. Atualizando nome de coleção no localStorage.');
-        updateLocalCollection(id, newName);
-        return { message: 'Coleção local atualizada com sucesso.' };
-      }
-      throw err;
-    }
+    updateLocalCollection(id, newName);
+    return { message: 'Coleção atualizada com sucesso.' };
   };
 
   // Executar fechamento combinatório
