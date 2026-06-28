@@ -29,13 +29,13 @@ async def get_latest_results(limit: int = 10, db: Session = Depends(get_db)):
 
 
 @router.get("/lottery/{lottery_name}/stats", response_model=dict)
-async def get_lottery_stats(lottery_name: str, db: Session = Depends(get_db)):
+async def get_lottery_stats(lottery_name: str, limit: int = 100, db: Session = Depends(get_db)):
     """Retorna estatísticas básicas de uma loteria específica."""
     results = (
         db.query(LotteryResult)
         .filter(LotteryResult.lottery_name.ilike(lottery_name))
         .order_by(LotteryResult.draw_date.desc())
-        .limit(100)
+        .limit(limit)
         .all()
     )
     

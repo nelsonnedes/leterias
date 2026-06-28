@@ -52,8 +52,11 @@ export const MOCK_DRAWS: Record<string, Draw[]> = {
 // --- LÓGICA DE ALGORITMO PREDITIVO OFFLINE ---
 
 // Retorna as estatísticas de dezenas quentes e frias baseadas no mock
-export const getMockStats = (lottery: string) => {
-  const draws = MOCK_DRAWS[lottery] || [];
+export const getMockStats = (lottery: string, limit?: number) => {
+  let draws = MOCK_DRAWS[lottery] || [];
+  if (limit) {
+    draws = draws.slice(0, limit);
+  }
   const total = draws.length;
   if (total === 0) return null;
 

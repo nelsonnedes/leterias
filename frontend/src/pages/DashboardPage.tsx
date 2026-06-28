@@ -9,15 +9,16 @@ interface DashboardPageProps {
 export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenerator }) => {
   const api = useApi();
   const [selectedLottery, setSelectedLottery] = useState<string>('megasena');
+  const [limit, setLimit] = useState<number>(100);
   const [stats, setStats] = useState<LotteryStats | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  const fetchStats = async (lottery: string) => {
+  const fetchStats = async (lottery: string, limitVal: number) => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.getStats(lottery);
+      const data = await api.getStats(lottery, limitVal);
       setStats(data);
     } catch (err: any) {
       setError('Erro ao carregar estatísticas do banco de dados SQLite local. Verifique se o backend está rodando.');
@@ -28,8 +29,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
   };
 
   useEffect(() => {
-    fetchStats(selectedLottery);
-  }, [selectedLottery]);
+    fetchStats(selectedLottery, limit);
+  }, [selectedLottery, limit]);
 
   const lotteries = [
     { id: 'megasena', name: 'Mega-Sena', color: 'border-megasena text-megasena-light hover:bg-megasena/10', activeColor: 'bg-megasena/20 text-megasena-light border-megasena' },
@@ -43,25 +44,43 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
       <div className="glow-spot bg-blue-500 w-96 h-96 -top-20 -left-20"></div>
       <div className="glow-spot bg-purple-600 w-96 h-96 bottom-10 right-10"></div>
 
-      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-extrabold text-white">Dashboard Estatístico</h2>
           <p className="text-gray-400 mt-1">Análise matemática profunda baseada no acervo histórico oficial da Caixa.</p>
         </div>
 
-        {/* Seletores de Loteria */}
-        <div className="flex gap-2 p-1 bg-dark-card/60 border border-dark-border rounded-xl backdrop-blur-md self-start">
-          {lotteries.map((lot) => (
-            <button
-              key={lot.id}
-              onClick={() => setSelectedLottery(lot.id)}
-              className={`px-4 py-2 text-sm font-semibold rounded-lg border transition-all duration-300 ${
-                selectedLottery === lot.id ? lot.activeColor : 'border-transparent text-gray-400 hover:text-white'
-              }`}
+        {/* Seletores de Loteria e Período */}
+        <div className="flex flex-wrap items-center gap-3">
+          {/* Período de Análise */}
+          <div className="flex items-center space-x-2 bg-dark-card/60 border border-dark-border px-3 py-2 rounded-xl">
+            <span className="text-xs text-gray-400 font-semibold">Analisar:</span>
+            <select
+              value={limit}
+              onChange={(e) => setLimit(parseInt(e.target.value))}
+              className="bg-transparent text-xs text-white font-bold focus:outline-none cursor-pointer"
             >
-              {lot.name}
-            </button>
-          ))}
+              <option value="30" className="bg-dark-card">Últimos 30 Concursos</option>
+              <option value="50" className="bg-dark-card">Últimos 50 Concursos</option>
+              <option value="100" className="bg-dark-card">Últimos 100 Concursos</option>
+              <option value="300" className="bg-dark-card">Todo o Histórico</option>
+            </select>
+          </div>
+
+          {/* Seletores de Loteria */}
+          <div className="flex gap-2 p-1 bg-dark-card/60 border border-dark-border rounded-xl backdrop-blur-md">
+            {lotteries.map((lot) => (
+              <button
+                key={lot.id}
+                onClick={() => setSelectedLottery(lot.id)}
+                className={`px-4 py-2 text-sm font-semibold rounded-lg border transition-all duration-300 ${
+                  selectedLottery === lot.id ? lot.activeColor : 'border-transparent text-gray-400 hover:text-white'
+                }`}
+              >
+                {lot.name}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
@@ -75,7 +94,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
           <div className="text-red-500 font-bold text-lg">⚠️ Falha na Conexão</div>
           <p className="text-gray-400 max-w-lg mx-auto">{error}</p>
           <button 
-            onClick={() => fetchStats(selectedLottery)} 
+            onClick={() => fetchStats(selectedLottery, limit)} 
             className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-semibold transition-all duration-200"
           >
             Tentar Novamente

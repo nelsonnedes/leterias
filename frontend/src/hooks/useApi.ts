@@ -87,14 +87,16 @@ const isNetworkError = (error: any): boolean => {
 export const useApi = () => {
   
   // Obter estatísticas básicas
-  const getStats = async (lotteryName: string): Promise<LotteryStats> => {
+  const getStats = async (lotteryName: string, limit?: number): Promise<LotteryStats> => {
     try {
-      const res = await api.get(`/lottery/${lotteryName}/stats`);
+      const res = await api.get(`/lottery/${lotteryName}/stats`, {
+        params: { limit }
+      });
       return res.data;
     } catch (err: any) {
       if (isNetworkError(err)) {
         console.warn('API local offline. Usando estatísticas do mock.');
-        const mock = getMockStats(lotteryName);
+        const mock = getMockStats(lotteryName, limit);
         if (mock) return mock;
       }
       throw err;
