@@ -39,8 +39,8 @@ async def fetch_draw(
     async with sem:
         for attempt in range(3):
             try:
-                # Espaçamento reduzido (80ms) — ainda seguro contra rate limit da Caixa
-                await asyncio.sleep(0.08)
+                # Espaçamento: 250ms entre chamadas — conservador para evitar ban da Caixa
+                await asyncio.sleep(0.25)
 
                 res = await client.get(url, headers=HEADERS, timeout=12.0)
                 if res.status_code == 200:
@@ -73,9 +73,10 @@ async def fetch_draw(
                     return None
 
                 elif res.status_code == 429:
-                    # Rate limit — espera progressiva
-                    print(f"  [WARN] Rate limit ({lottery_endpoint} #{concurso}). Aguardando 5s...")
-                    await asyncio.sleep(5.0)
+                    # Rate limit — espera progressiva mais agressiva
+                    wait_time = 15.0 * (attempt + 1)
+                    print(f"  [WARN] Rate limit ({lottery_endpoint} #{concurso}). Aguardando {wait_time:.0f}s...")
+                    await asyncio.sleep(wait_time)
 
             except Exception as e:
                 if attempt == 2:
@@ -149,8 +150,8 @@ async def load_historical_data(force_lotteries: list[str] | None = None):
         # 2. Conectar ao banco
         session = SessionLocal()
 
-        # Semáforo: 15 chamadas concorrentes (seguro, API Caixa suporta ~20 req/s)
-        sem = asyncio.Semaphore(15)
+        # Semáforo: 5 chamadas concorrentes (conservador — evita ban temporário da API Caixa)
+        sem = asyncio.Semaphore(5)
 
         for key, spec in targets.items():
             db_name = spec["db_name"]
@@ -182,8 +183,8 @@ async def load_historical_data(force_lotteries: list[str] | None = None):
 
             print(f"\n[{db_name}] >> {len(existing_draws)} no banco. Faltam {len(missing_draws)} concursos (1 a {max_draw})...")
 
-            # 3. Processar em lotes de 200
-            chunk_size = 200
+            # 3. Processar em lotes de 100 (menor para detectar problemas mais cedo)
+            chunk_size = 100
             total_inserted = 0
             total_skipped = 0
 
@@ -208,6 +209,11 @@ async def load_historical_data(force_lotteries: list[str] | None = None):
 
                 total_inserted += inserted
                 total_skipped += skipped
+
+                # Se o lote inteiro retornou 0 resultados (possível ban de IP), pausa longa
+                if len(valid_draws) == 0 and len(chunk) > 10:
+                    print(f"  [WARN] Lote {lote_num} sem resultados validos. Aguardando 30s para reset do rate limit...")
+                    await asyncio.sleep(30.0)
 
                 print(
                     f"  [{db_name}] Lote {lote_num}/{total_lotes} "
