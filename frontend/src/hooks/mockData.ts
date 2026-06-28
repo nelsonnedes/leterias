@@ -306,3 +306,100 @@ export const updateLocalCollection = (id: number, newName: string) => {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(cols));
   }
 };
+
+// Helper de combinações em TypeScript
+function getCombinations(array: number[], size: number): number[][] {
+  const result: number[][] = [];
+  function helper(start: number, combo: number[]) {
+    if (combo.length === size) {
+      result.push([...combo]);
+      return;
+    }
+    for (let i = start; i < array.length; i++) {
+      combo.push(array[i]);
+      helper(i + 1, combo);
+      combo.pop();
+    }
+  }
+  helper(0, []);
+  return result;
+}
+
+export const runLocalFechamento = (
+  selectedNumbers: number[],
+  gameSize: number,
+  guarantee: number,
+  conditionHits: number
+): number[][] => {
+  const numbers = [...new Set(selectedNumbers)].sort((a, b) => a - b);
+  
+  if (numbers.length < gameSize || guarantee > gameSize || conditionHits > numbers.length) {
+    return [];
+  }
+  
+  // 1. Gerar todas as apostas possíveis
+  const allPossibleBets = getCombinations(numbers, gameSize).map(arr => new Set(arr));
+  
+  // 2. Gerar todos os subsets de sorteio
+  const allDrawSubsets = getCombinations(numbers, conditionHits).map(arr => new Set(arr));
+  
+  const uncoveredSubsets = new Set<number>();
+  for (let i = 0; i < allDrawSubsets.length; i++) {
+    uncoveredSubsets.add(i);
+  }
+  
+  // 3. Mapear para cada aposta quais subsets ela cobre (interseção >= guarantee)
+  const betCoverMap: Set<number>[] = [];
+  for (let i = 0; i < allPossibleBets.length; i++) {
+    const bet = allPossibleBets[i];
+    const coveredIndices = new Set<number>();
+    for (let j = 0; j < allDrawSubsets.length; j++) {
+      const subset = allDrawSubsets[j];
+      
+      // Computa interseção
+      let hits = 0;
+      for (const num of bet) {
+        if (subset.has(num)) hits++;
+      }
+      
+      if (hits >= guarantee) {
+        coveredIndices.add(j);
+      }
+    }
+    betCoverMap.push(coveredIndices);
+  }
+  
+  const chosenBets: number[][] = [];
+  
+  // 4. Algoritmo ganancioso
+  while (uncoveredSubsets.size > 0) {
+    let bestBetIdx = -1;
+    let maxNewCover = 0;
+    
+    for (let i = 0; i < betCoverMap.length; i++) {
+      const coveredIndices = betCoverMap[i];
+      let newCover = 0;
+      for (const idx of coveredIndices) {
+        if (uncoveredSubsets.has(idx)) newCover++;
+      }
+      
+      if (newCover > maxNewCover) {
+        maxNewCover = newCover;
+        bestBetIdx = i;
+      }
+    }
+    
+    if (bestBetIdx === -1 || maxNewCover === 0) {
+      break;
+    }
+    
+    chosenBets.push([...allPossibleBets[bestBetIdx]].sort((a, b) => a - b));
+    
+    // Remove os cobertos
+    for (const idx of betCoverMap[bestBetIdx]) {
+      uncoveredSubsets.delete(idx);
+    }
+  }
+  
+  return chosenBets;
+};

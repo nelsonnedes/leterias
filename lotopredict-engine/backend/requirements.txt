@@ -8,3 +8,4 @@ beautifulsoup4>=4.12.2
 httpx>=0.24.1
 pydantic>=2.0.35
 pydantic-settings
+psycopg2-binary>=2.9.6

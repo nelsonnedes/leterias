@@ -7,12 +7,26 @@ import {
   deleteLocalCollection,
   getLocalCollectionDetail,
   updateLocalCollection,
+  runLocalFechamento,
   MOCK_DRAWS
 } from './mockData';
 
+const getBaseURL = () => {
+  if (import.meta.env.VITE_API_URL) {
+    return import.meta.env.VITE_API_URL;
+  }
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:8000/api/v1';
+    }
+  }
+  return '/api/v1';
+};
+
 const api = axios.create({
-  baseURL: 'http://localhost:8000/api/v1',
-  timeout: 2000, // Timeout curto para chaveamento rápido de fallback
+  baseURL: getBaseURL(),
+  timeout: 2500, // Timeout de 2.5s para chaveamento resiliente em conexões móveis/lentas
   headers: {
     'Content-Type': 'application/json',
   }
@@ -52,6 +66,23 @@ export interface BacktestResponse {
       hits: number;
     }[];
   }[];
+}
+
+export interface FechamentoParams {
+  lottery_name: string;
+  selected_numbers: number[];
+  guarantee: number;
+  condition_hits: number;
+}
+
+export interface FechamentoResult {
+  lottery: string;
+  selected_numbers: number[];
+  game_size: number;
+  guarantee: number;
+  condition_hits: number;
+  total_games_generated: number;
+  games: number[][];
 }
 
 export interface GameCollection {
@@ -313,6 +344,36 @@ export const useApi = () => {
     }
   };
 
+  // Executar fechamento combinatório
+  const runFechamento = async (params: FechamentoParams): Promise<FechamentoResult> => {
+    try {
+      const res = await api.post('/fechamento', params);
+      return res.data;
+    } catch (err: any) {
+      if (isNetworkError(err)) {
+        console.warn('API local offline. Executando fechamento combinatório no cliente.');
+        const lot = params.lottery_name.toLowerCase();
+        const gameSize = lot.includes('mega') ? 6 : lot.includes('facil') ? 15 : 5;
+        const localGames = runLocalFechamento(
+          params.selected_numbers,
+          gameSize,
+          params.guarantee,
+          params.condition_hits
+        );
+        return {
+          lottery: params.lottery_name,
+          selected_numbers: params.selected_numbers,
+          game_size: gameSize,
+          guarantee: params.guarantee,
+          condition_hits: params.condition_hits,
+          total_games_generated: localGames.length,
+          games: localGames
+        };
+      }
+      throw err;
+    }
+  };
+
   return {
     getStats,
     getPredict,
@@ -321,6 +382,7 @@ export const useApi = () => {
     listCollections,
     getCollectionDetail,
     deleteCollection,
-    updateCollectionName
+    updateCollectionName,
+    runFechamento
   };
 };

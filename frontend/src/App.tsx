@@ -3,7 +3,8 @@ import { DashboardPage } from './pages/DashboardPage';
 import { GeneratorPage } from './pages/GeneratorPage';
 import { CollectionsPage } from './pages/CollectionsPage';
 import { BacktestPage } from './pages/BacktestPage';
-import { LayoutDashboard, Sparkles, FolderHeart, BarChart3, Heart, Mail, Check, Copy, X } from 'lucide-react';
+import { ClosingPage } from './pages/ClosingPage';
+import { LayoutDashboard, Sparkles, FolderHeart, BarChart3, Heart, Mail, Check, Copy, X, Layers } from 'lucide-react';
 
 // Função de cálculo de CRC16 CCITT oficial para o Pix
 function crc16(data: string): string {
@@ -61,6 +62,7 @@ function App() {
   const navItems = [
     { id: 'dashboard', label: 'Painel Geral', icon: LayoutDashboard },
     { id: 'generator', label: 'Gerador Preditivo', icon: Sparkles },
+    { id: 'closing', label: 'Fechamento Matemático', icon: Layers },
     { id: 'collections', label: 'Minhas Coleções', icon: FolderHeart },
     { id: 'backtest', label: 'Simulador (Backtest)', icon: BarChart3 },
   ];
@@ -116,6 +118,9 @@ function App() {
         )}
         {activeTab === 'generator' && (
           <GeneratorPage initialLottery={preselectedLottery} />
+        )}
+        {activeTab === 'closing' && (
+          <ClosingPage />
         )}
         {activeTab === 'collections' && (
           <CollectionsPage />

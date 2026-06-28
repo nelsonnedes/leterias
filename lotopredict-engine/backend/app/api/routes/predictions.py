@@ -1,9 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
+from pydantic import BaseModel, Field
 from app.database.models import LotteryResult
 from app.database.session import get_db
 from app.services.probability import ProbabilityAlgorithms
+from app.services.closing_engine import ClosingEngine
 
 router = APIRouter()
 
@@ -188,3 +190,74 @@ async def run_backtest(
         "rewards_summary": reward_metrics,
         "simulations_detail": results_detail[:15]  # Retorna os detalhes dos primeiros 15 concursos testados para manter o payload leve
     }
+
+
+class FechamentoRequest(BaseModel):
+    lottery_name: str = Field(..., description="Nome da loteria (Mega-Sena, Lotofácil ou Quina)")
+    selected_numbers: List[int] = Field(..., description="Lista de números escolhidos pelo usuário para desdobrar")
+    guarantee: int = Field(..., ge=2, description="Garantia mínima de acertos, ex: 14 para Lotofácil")
+    condition_hits: int = Field(..., ge=2, description="Quantidade de acertos necessários dentro do conjunto para ativar a garantia")
+
+
+@router.post("/fechamento", response_model=Dict[str, Any])
+async def post_fechamento(data: FechamentoRequest):
+    """
+    Gera combinações ótimas (desdobramentos) baseadas nas dezenas selecionadas e regras de garantia.
+    """
+    spec = get_lottery_spec(data.lottery_name)
+    game_size = spec["numbers_to_draw"]
+    display_name = spec["display_name"]
+    lot_key = data.lottery_name.lower().replace(" ", "").replace("-", "")
+
+    # Limitações de dezenas para evitar timeout / estouro de RAM no serverless
+    limits = {
+        "megasena": 12,
+        "lotofacil": 20,
+        "quina": 10
+    }
+    
+    max_allowed = limits.get(lot_key, 12)
+    clean_numbers = sorted(list(set(data.selected_numbers)))
+    
+    if len(clean_numbers) > max_allowed:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Para a loteria {display_name}, o limite de dezenas selecionadas é de {max_allowed} números (você enviou {len(clean_numbers)})."
+        )
+        
+    if len(clean_numbers) < game_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Você deve selecionar pelo menos {game_size} dezenas para realizar o fechamento."
+        )
+
+    if data.guarantee > game_size:
+        raise HTTPException(
+            status_code=400,
+            detail=f"A garantia ({data.guarantee}) não pode ser maior que o tamanho do jogo ({game_size})."
+        )
+        
+    if data.condition_hits > len(clean_numbers):
+        raise HTTPException(
+            status_code=400,
+            detail=f"A condição de acerto ({data.condition_hits}) não pode ser maior que o número de dezenas selecionadas ({len(clean_numbers)})."
+        )
+
+    # Executa a geração combinatória
+    games = ClosingEngine.generate_desdobramento(
+        selected_numbers=clean_numbers,
+        game_size=game_size,
+        guarantee=data.guarantee,
+        condition_hits=data.condition_hits
+    )
+    
+    return {
+        "lottery": display_name,
+        "selected_numbers": clean_numbers,
+        "game_size": game_size,
+        "guarantee": data.guarantee,
+        "condition_hits": data.condition_hits,
+        "total_games_generated": len(games),
+        "games": games
+    }
+
