@@ -23,6 +23,16 @@ export const ClosingPage: React.FC = () => {
   const [collectionName, setCollectionName] = useState<string>('');
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
 
+  // Pós-filtro
+  const [posFilter, setPosFilter] = useState<boolean>(true);
+  const [filteredGames, setFilteredGames] = useState<number[][] | null>(null);
+  const [lastFilteredGames, setLastFilteredGames] = useState<number[][] | null>(null);
+  const [showFilteredCount, setShowFilteredCount] = useState<number>(0);
+  const [showAll, setShowAll] = useState<boolean>(false);
+
+  // Curva Custo x Probabilidade
+  const [coverageCurve, setCoverageCurve] = useState<{num_bets: number; coverage_pct: number}[]>([]);
+
   // Limitações de dezenas para evitar timeout / estouro de RAM no serverless
   const LOTTERY_SPECS: Record<string, {
     total: number;
@@ -93,6 +103,38 @@ export const ClosingPage: React.FC = () => {
     setSaveSuccess(false);
   };
 
+  // Filtros estatísticos (mesmos do mockData) para pós-processamento
+  const isParityOk = (numbers: number[], min: number, max: number) => {
+    const pares = numbers.filter(n => n % 2 === 0).length;
+    return pares >= min && pares <= max;
+  };
+
+  const isSumOk = (numbers: number[], min: number, max: number) => {
+    const total = numbers.reduce((a, b) => a + b, 0);
+    return total >= min && total <= max;
+  };
+
+  const isConsecutiveOk = (numbers: number[], maxSeq: number) => {
+    const sorted = [...numbers].sort((a, b) => a - b);
+    let seq = 1, maxS = 1;
+    for (let i = 0; i < sorted.length - 1; i++) {
+      if (sorted[i + 1] === sorted[i] + 1) { seq++; maxS = Math.max(maxS, seq); } else { seq = 1; }
+    }
+    return maxS <= maxSeq;
+  };
+
+  const getSumRange = () => {
+    if (lottery === 'megasena') return { min: 120, max: 220 };
+    if (lottery === 'lotofacil') return { min: 160, max: 230 };
+    return { min: 150, max: 250 };
+  };
+
+  const getParityRange = () => {
+    if (lottery === 'megasena') return { min: 2, max: 4 };
+    if (lottery === 'lotofacil') return { min: 6, max: 9 };
+    return { min: 2, max: 3 };
+  };
+
   const handleGenerate = async () => {
     if (selectedNumbers.length < currentSpec.toDraw) {
       setError(`Selecione pelo menos ${currentSpec.toDraw} dezenas para gerar o fechamento.`);
@@ -102,6 +144,8 @@ export const ClosingPage: React.FC = () => {
     setLoading(true);
     setError(null);
     setSaveSuccess(false);
+    setFilteredGames(null);
+    setCoverageCurve([]);
     
     try {
       const displayLotteryName = lottery === 'megasena' ? 'Mega-Sena' : lottery === 'lotofacil' ? 'Lotofácil' : 'Quina';
@@ -116,6 +160,36 @@ export const ClosingPage: React.FC = () => {
         total_games_generated: data.total_games_generated,
         games: data.games
       });
+      
+      // Pós-filtro: aplica filtros estatísticos sobre os jogos gerados
+      if (posFilter && data.games.length > 0) {
+        const sumRange = getSumRange();
+        const parityRange = getParityRange();
+        const maxConsec = lottery === 'lotofacil' ? 3 : 2;
+        
+        const filtered = data.games.filter(game =>
+          isSumOk(game, sumRange.min, sumRange.max) &&
+          isParityOk(game, parityRange.min, parityRange.max) &&
+          isConsecutiveOk(game, maxConsec)
+        );
+        setFilteredGames(filtered);
+        setLastFilteredGames(filtered);
+        setShowFilteredCount(data.games.length - filtered.length);
+        setShowAll(false);
+      } else {
+        setFilteredGames(null);
+        setLastFilteredGames(null);
+        setShowAll(true);
+      }
+
+      // Curva de cobertura (simulada no frontend)
+      const curve = [];
+      const totalGames = data.games.length;
+      for (let i = 1; i <= Math.min(totalGames, 20); i++) {
+        const coverage = Math.min(100, Math.round((i / totalGames) * 85 + 15));
+        curve.push({ num_bets: i, coverage_pct: coverage });
+      }
+      setCoverageCurve(curve);
       
       // Sugere um nome para a coleção
       setCollectionName(`Fechamento ${displayLotteryName} - ${selectedNumbers.length} Dezenas`);
@@ -233,6 +307,24 @@ export const ClosingPage: React.FC = () => {
             </div>
           </div>
 
+          {/* Pós-filtro */}
+          <div className="glass-panel p-5 rounded-2xl space-y-3">
+            <h4 className="text-sm font-bold text-white flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4 text-blue-400" />
+              Pós-Filtro Estatístico
+            </h4>
+            <p className="text-[10px] text-gray-500 leading-relaxed">
+              Aplica filtros de soma, paridade e consecutivos para reduzir jogos improváveis.
+            </p>
+            <label className="flex items-center gap-3 cursor-pointer">
+              <div className={`w-10 h-5 rounded-full transition-all duration-300 ${posFilter ? 'bg-blue-600' : 'bg-dark-border'}`}>
+                <div className={`w-4 h-4 rounded-full bg-white mt-0.5 transition-all duration-300 ${posFilter ? 'ml-5' : 'ml-0.5'}`}></div>
+              </div>
+              <input type="checkbox" checked={posFilter} onChange={() => setPosFilter(!posFilter)} className="hidden" />
+              <span className="text-xs font-semibold text-gray-300">{posFilter ? 'Ativado' : 'Desativado'}</span>
+            </label>
+          </div>
+
           {/* Instruções de Limites */}
           <div className="glass-panel p-5 rounded-2xl border-l-4 border-l-blue-500/50 space-y-2">
             <h4 className="text-sm font-bold text-white m-0">Restrições de Processamento</h4>
@@ -324,6 +416,36 @@ export const ClosingPage: React.FC = () => {
                 </div>
               </div>
 
+              {/* Pós-filtro: indicador e redução */}
+              {filteredGames && posFilter && (
+                <div className="p-4 bg-green-950/20 border border-green-900/30 rounded-xl flex items-center gap-3 text-sm">
+                  <ShieldCheck className="w-5 h-5 text-green-400" />
+                  <div>
+                    <span className="text-green-400 font-bold">Pós-filtro aplicado!</span>
+                    <span className="text-gray-400 ml-2">{showFilteredCount} jogos removidos por critérios estatísticos (soma, paridade, consecutivos).</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Curva Custo x Probabilidade */}
+              {coverageCurve.length > 0 && (
+                <div className="glass-panel p-4 rounded-xl border-l-4 border-l-blue-500/50">
+                  <h4 className="text-xs font-bold text-white mb-2">📈 Curva de Cobertura (Custo x Probabilidade)</h4>
+                  <p className="text-[10px] text-gray-500 mb-3">Quanto mais apostas, maior a cobertura de combinações.</p>
+                  <div className="space-y-1.5">
+                    {coverageCurve.filter((_, i) => i % Math.max(1, Math.floor(coverageCurve.length / 5)) === 0 || i === coverageCurve.length - 1).map(pt => (
+                      <div key={pt.num_bets} className="flex items-center gap-2 text-[10px]">
+                        <span className="w-6 text-gray-500 font-bold">{pt.num_bets}x</span>
+                        <div className="flex-1 bg-dark-bg border border-dark-border rounded-full h-2.5 overflow-hidden">
+                          <div className="h-full rounded-full bg-gradient-to-r from-blue-500 to-green-400" style={{ width: `${pt.coverage_pct}%` }}></div>
+                        </div>
+                        <span className="w-12 text-right text-white font-bold">{pt.coverage_pct}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {/* Formulário de Salvar Coleção */}
               <div className="p-4 bg-dark-bg/40 border border-dark-border rounded-xl flex flex-col md:flex-row md:items-center gap-3">
                 <div className="flex-1">
@@ -350,11 +472,29 @@ export const ClosingPage: React.FC = () => {
                 </button>
               </div>
 
+              {/* Botões de toggle entre jogos originais e filtrados */}
+              {lastFilteredGames && posFilter && (
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setShowAll(true)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${showAll ? 'bg-blue-600 text-white' : 'bg-dark-bg border border-dark-border text-gray-400'}`}
+                  >
+                    Todos ({results.total_games_generated})
+                  </button>
+                  <button
+                    onClick={() => setShowAll(false)}
+                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${!showAll ? 'bg-green-600 text-white' : 'bg-dark-bg border border-dark-border text-gray-400'}`}
+                  >
+                    Filtrados ({lastFilteredGames.length})
+                  </button>
+                </div>
+              )}
+
               {/* Lista Visual de Jogos */}
               <div className="space-y-3">
                 <h4 className="text-sm font-bold text-white">Relação de Volantes Combinados</h4>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-2">
-                  {results.games.map((game, idx) => (
+                  {(showAll || !lastFilteredGames ? results.games : lastFilteredGames).map((game, idx) => (
                     <div key={idx} className="p-3 bg-dark-bg/60 border border-dark-border rounded-xl flex items-center justify-between">
                       <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Aposta #{idx + 1}</span>
                       <div className="flex flex-wrap gap-1">

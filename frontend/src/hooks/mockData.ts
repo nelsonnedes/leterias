@@ -234,7 +234,81 @@ function computeDelay(draws: Draw[], maxNumber: number): Record<number, number> 
 }
 
 // ---------------------------------------------------------------------------
-// STATS PARA O DASHBOARD
+// ANÁLISE DE PARES
+// ---------------------------------------------------------------------------
+function computePairs(draws: Draw[]): [string, number][] {
+  const pairCounts: Record<string, number> = {};
+  for (const d of draws) {
+    const sorted = [...d.numbers].sort((a, b) => a - b);
+    for (let i = 0; i < sorted.length; i++) {
+      for (let j = i + 1; j < sorted.length; j++) {
+        const key = `${sorted[i]}-${sorted[j]}`;
+        pairCounts[key] = (pairCounts[key] || 0) + 1;
+      }
+    }
+  }
+  return Object.entries(pairCounts)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 15);
+}
+
+// ---------------------------------------------------------------------------
+// ANÁLISE DE TERMINADORES (último dígito)
+// ---------------------------------------------------------------------------
+function computeTerminators(draws: Draw[]): [number, number][] {
+  const termCounts: Record<number, number> = {};
+  for (const d of draws) {
+    for (const n of d.numbers) {
+      const lastDigit = n % 10;
+      termCounts[lastDigit] = (termCounts[lastDigit] || 0) + 1;
+    }
+  }
+  return Object.entries(termCounts)
+    .map(([k, v]) => [parseInt(k), v] as [number, number])
+    .sort((a, b) => a[0] - b[0]);
+}
+
+// ---------------------------------------------------------------------------
+// JANELA DESLIZANTE (tendência recente vs total)
+// ---------------------------------------------------------------------------
+function computeTrendingUp(draws: Draw[], maxNumber: number): [number, number][] {
+  if (draws.length < 5) return [];
+  const windowSize = Math.min(25, Math.floor(draws.length / 2));
+  const recentDraws = draws.slice(0, windowSize);
+  
+  const freqTotal = computeFrequency(draws, maxNumber);
+  const freqRecent = computeFrequency(recentDraws, maxNumber);
+  
+  const totalCount = draws.reduce((s, d) => s + d.numbers.length, 0);
+  const recentCount = recentDraws.reduce((s, d) => s + d.numbers.length, 0);
+  
+  const trending: [number, number][] = [];
+  for (let n = 1; n <= maxNumber; n++) {
+    const recentPct = freqRecent[n] / (recentCount || 1);
+    const totalPct = freqTotal[n] / (totalCount || 1);
+    const diff = (recentPct - totalPct) * 100;
+    if (diff > 0) {
+      trending.push([n, Math.round(diff * 100) / 100]);
+    }
+  }
+  return trending.sort((a, b) => b[1] - a[1]).slice(0, 10);
+}
+
+// ---------------------------------------------------------------------------
+// ALL FREQUENCIES (para heatmap)
+// ---------------------------------------------------------------------------
+function computeAllFrequencies(draws: Draw[], maxNumber: number): Record<string, number> {
+  const freq = computeFrequency(draws, maxNumber);
+  const total = draws.reduce((s, d) => s + d.numbers.length, 0) || 1;
+  const result: Record<string, number> = {};
+  for (let n = 1; n <= maxNumber; n++) {
+    result[String(n)] = freq[n] / total;
+  }
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// STATS PARA O DASHBOARD (ENRIQUECIDO)
 // ---------------------------------------------------------------------------
 export const getMockStats = (lottery: string, limit?: number) => {
   let draws = MOCK_DRAWS[lottery] || [];
@@ -255,6 +329,12 @@ export const getMockStats = (lottery: string, limit?: number) => {
     .sort((a, b) => b.delay - a.delay)
     .slice(0, 10);
 
+  // NOVAS ANÁLISES
+  const topPairs = computePairs(draws);
+  const terminators = computeTerminators(draws);
+  const trendingUp = computeTrendingUp(draws, cfg.maxNumber);
+  const allFrequencies = computeAllFrequencies(draws, cfg.maxNumber);
+
   return {
     lottery_name: lottery.toUpperCase(),
     total_results: total,
@@ -264,7 +344,11 @@ export const getMockStats = (lottery: string, limit?: number) => {
     },
     most_common_numbers: sorted.slice(0, 10),
     least_common_numbers: [...sorted].reverse().slice(0, 10),
-    most_delayed: delayRanking
+    most_delayed: delayRanking,
+    top_pairs: topPairs,
+    terminators: terminators,
+    trending_up: trendingUp,
+    all_frequencies: allFrequencies
   };
 };
 

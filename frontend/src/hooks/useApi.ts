@@ -52,6 +52,10 @@ export interface LotteryStats {
   };
   most_common_numbers: [number, number][];
   least_common_numbers: [number, number][];
+  top_pairs?: [string, number][];
+  terminators?: [number, number][];
+  trending_up?: [number, number][];
+  all_frequencies?: Record<string, number>;
 }
 
 export interface PredictionResponse {

@@ -44,6 +44,63 @@ class ProbabilityAlgorithms:
                 
         return delays
 
+    @staticmethod
+    def pair_analysis(numbers_history: List[List[int]], total_numbers: int = 60) -> Dict[str, int]:
+        """
+        Análise de Pares: Calcula quantas vezes cada par de números apareceu junto.
+        Retorna dict no formato 'num1-num2' -> contagem.
+        """
+        pair_counts: Dict[str, int] = {}
+        for draw in numbers_history:
+            sorted_draw = sorted(draw)
+            for i in range(len(sorted_draw)):
+                for j in range(i + 1, len(sorted_draw)):
+                    pair_key = f"{sorted_draw[i]}-{sorted_draw[j]}"
+                    pair_counts[pair_key] = pair_counts.get(pair_key, 0) + 1
+        return pair_counts
+
+    @staticmethod
+    def terminators_analysis(numbers_history: List[int], total_numbers: int = 60) -> Dict[int, int]:
+        """
+        Análise de Terminadores (últimos dígitos): conta quantas vezes
+        cada dígito final (0-9) apareceu nos sorteios.
+        """
+        term_counts: Dict[int, int] = {}
+        for n in numbers_history:
+            last_digit = n % 10
+            term_counts[last_digit] = term_counts.get(last_digit, 0) + 1
+        return term_counts
+
+    @staticmethod
+    def sliding_window_frequency(
+        numbers_history: List[List[int]],
+        total_numbers: int = 60,
+        window_size: int = 25
+    ) -> Tuple[Dict[int, float], Dict[int, float]]:
+        """
+        Análise de Tendência por Janela Deslizante.
+        Retorna (freq_janela_recente, freq_historico_total).
+        Permite comparar tendências recentes vs histórico completo.
+        """
+        if not numbers_history:
+            return ({i: 0.0 for i in range(1, total_numbers + 1)},
+                    {i: 0.0 for i in range(1, total_numbers + 1)})
+
+        # Frequência do histórico completo
+        flat_all = [n for draw in numbers_history for n in draw]
+        counter_all = Counter(flat_all)
+        total_all = sum(counter_all.values()) or 1
+        freq_all = {i: counter_all.get(i, 0) / total_all for i in range(1, total_numbers + 1)}
+
+        # Frequência da janela recente (últimos window_size sorteios)
+        recent = numbers_history[-window_size:] if len(numbers_history) > window_size else numbers_history
+        flat_recent = [n for draw in recent for n in draw]
+        counter_recent = Counter(flat_recent)
+        total_recent = sum(counter_recent.values()) or 1
+        freq_recent = {i: counter_recent.get(i, 0) / total_recent for i in range(1, total_numbers + 1)}
+
+        return freq_recent, freq_all
+
     # ==========================================
     # FILTROS ESTATÍSTICOS E REGRAS DE NEGÓCIO
     # ==========================================
