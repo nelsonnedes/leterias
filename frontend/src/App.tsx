@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react';
+import { Analytics } from '@vercel/analytics/react';
 import QRCode from 'qrcode';
 import { DashboardPage } from './pages/DashboardPage';
 import { GeneratorPage } from './pages/GeneratorPage';
 import { CollectionsPage } from './pages/CollectionsPage';
 import { BacktestPage } from './pages/BacktestPage';
 import { ClosingPage } from './pages/ClosingPage';
-import { LayoutDashboard, Sparkles, FolderHeart, BarChart3, Heart, Mail, Check, Copy, X, Layers } from 'lucide-react';
+import { LayoutDashboard, Sparkles, FolderHeart, BarChart3, Heart, Mail, Check, Copy, X, Layers, Download, Smartphone } from 'lucide-react';
 
 // Função de cálculo de CRC16 CCITT oficial para o Pix
 function crc16(data: string): string {
@@ -50,6 +51,10 @@ function App() {
   const [copied, setCopied] = useState<boolean>(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>('');
   const [qrLoading, setQrLoading] = useState<boolean>(false);
+  const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
+  const [showInstallModal, setShowInstallModal] = useState<boolean>(false);
+  const [isAppInstalled, setIsAppInstalled] = useState<boolean>(false);
+  const [showUpdateBanner, setShowUpdateBanner] = useState<boolean>(false);
 
   const handleNavigateToGenerator = (lottery: string) => {
     setPreselectedLottery(lottery);
@@ -70,6 +75,32 @@ function App() {
     { id: 'backtest', label: 'Simulador (Backtest)', icon: BarChart3 },
   ];
 
+  // Detecta se o app já está instalado (standalone mode)
+  useEffect(() => {
+    const isStandalone = window.matchMedia('(display-mode: standalone)').matches ||
+      (window.navigator as any).standalone === true;
+    setIsAppInstalled(isStandalone);
+  }, []);
+
+  // Intercepta o evento beforeinstallprompt (Chrome/Android/Samsung)
+  useEffect(() => {
+    const handler = (e: Event) => {
+      e.preventDefault();
+      setDeferredPrompt(e);
+    };
+    window.addEventListener('beforeinstallprompt', handler);
+    return () => window.removeEventListener('beforeinstallprompt', handler);
+  }, []);
+
+  // Monitora service worker para updates (só mostra se já havia um SW anterior)
+  useEffect(() => {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+      navigator.serviceWorker.addEventListener('controllerchange', () => {
+        setShowUpdateBanner(true);
+      });
+    }
+  }, []);
+
   // Gera o QR Code localmente via qrcode library quando o modal abre
   useEffect(() => {
     if (showPixModal) {
@@ -89,8 +120,28 @@ function App() {
     }
   }, [showPixModal]);
 
+  // Manipula o clique no botão de instalação
+  const handleInstallClick = async () => {
+    if (!deferredPrompt) return;
+    try {
+      deferredPrompt.prompt();
+      const { outcome } = await deferredPrompt.userChoice;
+      if (outcome === 'accepted') {
+        setDeferredPrompt(null);
+        setIsAppInstalled(true);
+      }
+    } catch (err) {
+      console.warn('Usuário fechou o prompt de instalação:', err);
+    }
+  };
+
+  // Detecta se é iOS Safari (precisa de instruções especiais)
+  const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) && !('MSStream' in window);
+  const showInstallButton = !isAppInstalled && (!!deferredPrompt || isIOS);
+
   return (
-    <div className="min-h-screen bg-[#090a0f] text-gray-200 flex flex-col antialiased">
+    <div className="min-h-screen bg-[#090a0f] text-gray-200 flex flex-col antialiased overflow-x-hidden max-w-full w-full">
+      <Analytics />
       {/* Cabeçalho */}
       <header className="glass-panel sticky top-0 z-50 px-6 py-4 border-b border-dark-border backdrop-blur-lg">
         <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4">
@@ -153,8 +204,25 @@ function App() {
       {/* Rodapé */}
       <footer className="border-t border-dark-border bg-dark-card/20 py-8 mt-12 text-center text-xs text-gray-600">
         <div className="max-w-7xl mx-auto px-6 flex flex-col items-center justify-center gap-5">
-          {/* Botão de Apoio Acima */}
-          <div>
+          {/* Botões do Rodapé */}
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            {/* Botão Instalar PWA */}
+            {showInstallButton && (
+              <button
+                onClick={() => {
+                  if (isIOS) {
+                    setShowInstallModal(true);
+                  } else {
+                    handleInstallClick();
+                  }
+                }}
+                className="px-5 py-2.5 bg-blue-600/10 hover:bg-blue-600/25 border border-blue-500/20 text-blue-400 font-bold rounded-xl flex items-center gap-2 transition-all duration-300 cursor-pointer text-xs shadow-lg shadow-blue-500/5 hover:scale-105"
+              >
+                <Download className="w-4 h-4" />
+                Instalar App
+              </button>
+            )}
+            {/* Botão de Apoio PIX */}
             <button
               onClick={() => setShowPixModal(true)}
               className="px-5 py-2.5 bg-pink-600/10 hover:bg-pink-600/25 border border-pink-500/20 text-pink-400 font-bold rounded-xl flex items-center gap-2 transition-all duration-300 cursor-pointer text-xs shadow-lg shadow-pink-500/5 hover:scale-105"
@@ -178,6 +246,65 @@ function App() {
           </div>
         </div>
       </footer>
+
+      {/* Banner de Nova Versão Disponível */}
+      {showUpdateBanner && (
+        <div className="fixed bottom-4 left-4 right-4 z-[60] mx-auto max-w-md">
+          <div className="glass-panel p-4 rounded-2xl flex items-center justify-between gap-3 border border-blue-500/30">
+            <div className="flex items-center gap-2 text-sm">
+              <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
+              <span className="text-gray-200 font-medium">Nova versão disponível</span>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition-all cursor-pointer"
+            >
+              Atualizar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Instalação iOS */}
+      {showInstallModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fadeIn" onClick={() => setShowInstallModal(false)}>
+          <div className="glass-panel w-full max-w-sm p-6 rounded-3xl relative text-center space-y-5" onClick={e => e.stopPropagation()}>
+            <button onClick={() => setShowInstallModal(false)} className="absolute top-4 right-4 p-2 bg-dark-bg/60 hover:bg-dark-card rounded-lg text-gray-400 hover:text-white transition-all cursor-pointer">
+              <X className="w-4 h-4" />
+            </button>
+
+            <div className="mx-auto w-12 h-12 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400">
+              <Smartphone className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-lg font-bold text-white">Instalar no iPhone/iPad</h3>
+              <p className="text-xs text-gray-400 mt-2 leading-relaxed">
+                Para instalar o LotoPredict Engine no seu dispositivo Apple:
+              </p>
+            </div>
+
+            <div className="bg-dark-bg/50 border border-dark-border rounded-2xl p-4 text-left space-y-4">
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 font-bold text-xs shrink-0 mt-0.5">1</div>
+                <p className="text-xs text-gray-300">Toque no botão <strong className="text-white">Compartilhar</strong> <span className="text-blue-400">📤</span> na barra inferior do Safari.</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 font-bold text-xs shrink-0 mt-0.5">2</div>
+                <p className="text-xs text-gray-300">Role para baixo e toque em <strong className="text-white">Adicionar à Tela de Início</strong> <span className="text-blue-400">➕</span>.</p>
+              </div>
+              <div className="flex items-start gap-3">
+                <div className="w-6 h-6 rounded-full bg-blue-500/10 flex items-center justify-center text-blue-400 font-bold text-xs shrink-0 mt-0.5">3</div>
+                <p className="text-xs text-gray-300">Toque em <strong className="text-white">Adicionar</strong> no canto superior direito.</p>
+              </div>
+            </div>
+
+            <button onClick={() => setShowInstallModal(false)}
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition-all cursor-pointer">
+              Entendi!
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Modal do PIX */}
       {showPixModal && (
