@@ -144,16 +144,11 @@ export const GeneratorPage: React.FC<GeneratorPageProps> = ({ initialLottery = '
               className="w-full py-4 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-800 text-white font-bold rounded-xl flex items-center justify-center gap-2 transition-all duration-300 shadow-lg shadow-blue-500/10 cursor-pointer"
             >
               {loading ? (
-                <>
-                  <RefreshCw className="w-5 h-5 animate-spin" />
-                  Filtrando Apostas...
-                </>
+                <RefreshCw className="w-5 h-5 animate-spin" />
               ) : (
-                <>
-                  <Sparkles className="w-5 h-5" />
-                  Gerar Jogos
-                </>
+                <Sparkles className="w-5 h-5" />
               )}
+              <span>{loading ? 'Filtrando Apostas...' : 'Gerar Jogos'}</span>
             </button>
           </div>
         </div>
