@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
+import QRCode from 'qrcode';
 import { DashboardPage } from './pages/DashboardPage';
 import { GeneratorPage } from './pages/GeneratorPage';
 import { CollectionsPage } from './pages/CollectionsPage';
@@ -30,13 +31,13 @@ const generatePixCode = (): string => {
   const city = 'SAO PAULO';
   
   const part1 = '000201';
-  const merchantAccount = `26${(38 + key.length).toString().padStart(2, '0')}0014br.gov.bcb.pix01${key.length.toString().padStart(2, '0')}${key}`;
+  const merchantAccount = `26${(22 + key.length).toString().padStart(2, '0')}0014BR.GOV.BCB.PIX01${key.length.toString().padStart(2, '0')}${key}`;
   const category = '52040000';
   const currency = '5303986';
   const country = '5802BR';
   const merchantName = `59${name.length.toString().padStart(2, '0')}${name}`;
   const merchantCity = `60${city.length.toString().padStart(2, '0')}${city}`;
-  const additionalData = '62070503***';
+  const additionalData = '62060503***';
   
   const payload = `${part1}${merchantAccount}${category}${currency}${country}${merchantName}${merchantCity}${additionalData}6304`;
   return `${payload}${crc16(payload)}`;
@@ -47,6 +48,8 @@ function App() {
   const [preselectedLottery, setPreselectedLottery] = useState<string>('megasena');
   const [showPixModal, setShowPixModal] = useState<boolean>(false);
   const [copied, setCopied] = useState<boolean>(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string>('');
+  const [qrLoading, setQrLoading] = useState<boolean>(false);
 
   const handleNavigateToGenerator = (lottery: string) => {
     setPreselectedLottery(lottery);
@@ -67,7 +70,24 @@ function App() {
     { id: 'backtest', label: 'Simulador (Backtest)', icon: BarChart3 },
   ];
 
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=${encodeURIComponent(generatePixCode())}`;
+  // Gera o QR Code localmente via qrcode library quando o modal abre
+  useEffect(() => {
+    if (showPixModal) {
+      setQrLoading(true);
+      QRCode.toDataURL(generatePixCode(), {
+        width: 180,
+        margin: 1,
+        color: { dark: '#000000', light: '#FFFFFF' },
+        errorCorrectionLevel: 'M'
+      }).then(url => {
+        setQrDataUrl(url);
+        setQrLoading(false);
+      }).catch(err => {
+        console.error('Erro ao gerar QR Code PIX:', err);
+        setQrLoading(false);
+      });
+    }
+  }, [showPixModal]);
 
   return (
     <div className="min-h-screen bg-[#090a0f] text-gray-200 flex flex-col antialiased">
@@ -181,11 +201,18 @@ function App() {
 
             {/* QR Code */}
             <div className="bg-white p-3 rounded-2xl w-fit mx-auto shadow-xl">
-              <img 
-                src={qrCodeUrl} 
-                alt="QR Code PIX para doação" 
-                className="w-44 h-44"
-              />
+              {qrLoading ? (
+                <div className="w-44 h-44 flex flex-col items-center justify-center gap-2 text-gray-300">
+                  <div className="w-6 h-6 border-2 border-blue-500 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-[10px] font-medium text-gray-400">Gerando QR Code...</span>
+                </div>
+              ) : (
+                <img 
+                  src={qrDataUrl}
+                  alt="QR Code PIX para doação"
+                  className="w-44 h-44"
+                />
+              )}
             </div>
 
             {/* Informações Recebedor */}
