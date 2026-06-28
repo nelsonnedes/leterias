@@ -1,0 +1,31 @@
+# ============================================================
+# render.yaml — Configuração do Serviço Web no Render.com
+# Docs: https://render.com/docs/blueprint-spec
+# ============================================================
+services:
+  - type: web
+    name: lotopredict-api
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    plan: free
+
+    # Variáveis de ambiente obrigatórias (configure no Dashboard do Render)
+    envVars:
+      - key: PORT
+        value: "8000"
+
+      # Banco de dados: Configure a URL do PostgreSQL do Render ou Supabase aqui
+      # Exemplo: postgresql+psycopg2://user:password@host:5432/dbname
+      - key: POSTGRES_URL
+        sync: false   # "false" = você preenche manualmente no Dashboard (não fica no repo)
+
+      # Opcional: habilitar modo debug (deixe "false" em produção)
+      - key: DEBUG
+        value: "false"
+
+    # Healthcheck para o Render saber que a API subiu
+    healthCheckPath: /health
+
+    # Build automático a cada push na branch main do GitHub
+    autoDeploy: true

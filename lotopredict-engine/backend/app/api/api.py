@@ -16,10 +16,19 @@ def create_app() -> FastAPI:
         openapi_url=f"{settings.API_V1_STR}/openapi.json",
     )
 
-    # Configuração de CORS para permitir requisições do frontend local
+    # Configuração de CORS para aceitar frontend local e produção (Vercel + Render)
+    import os
+    _vercel_origin = os.getenv("FRONTEND_URL", "https://frontend-delta-six-13.vercel.app")
+    _allowed_origins = [
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        _vercel_origin,
+    ]
+
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+        allow_origins=_allowed_origins,
+        allow_origin_regex=r"https://.*\.vercel\.app",  # Todos os previews do Vercel
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],

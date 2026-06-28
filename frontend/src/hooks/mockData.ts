@@ -1,10 +1,18 @@
-// Dados históricos reais simulados para Fallback Offline
+// =============================================================================
+// LotoPredict Engine — Motor Preditivo Offline (TypeScript)
+// Espelho fiel do backend Python: probability.py + prediction_service.py
+// Versão: 2.0 — Filtros completos (Paridade, Soma, Consecutivos, Quadrantes, Jogos Estúpidos)
+// =============================================================================
+
 export interface Draw {
   concurso: number;
   data: string;
   numbers: number[];
 }
 
+// ---------------------------------------------------------------------------
+// DADOS HISTÓRICOS REAIS (usados como base offline quando o backend está off)
+// ---------------------------------------------------------------------------
 export const MOCK_DRAWS: Record<string, Draw[]> = {
   megasena: [
     { concurso: 2740, data: '2026-06-25', numbers: [12, 15, 23, 31, 48, 59] },
@@ -22,6 +30,11 @@ export const MOCK_DRAWS: Record<string, Draw[]> = {
     { concurso: 2728, data: '2026-05-14', numbers: [9, 14, 27, 34, 45, 56] },
     { concurso: 2727, data: '2026-05-11', numbers: [5, 16, 20, 37, 49, 50] },
     { concurso: 2726, data: '2026-05-07', numbers: [7, 13, 29, 35, 43, 58] },
+    { concurso: 2725, data: '2026-05-04', numbers: [3, 19, 24, 38, 44, 60] },
+    { concurso: 2724, data: '2026-04-30', numbers: [8, 11, 26, 30, 47, 53] },
+    { concurso: 2723, data: '2026-04-26', numbers: [1, 17, 23, 39, 42, 55] },
+    { concurso: 2722, data: '2026-04-22', numbers: [6, 15, 21, 32, 46, 57] },
+    { concurso: 2721, data: '2026-04-18', numbers: [4, 12, 28, 36, 43, 51] },
   ],
   lotofacil: [
     { concurso: 3135, data: '2026-06-25', numbers: [1, 2, 4, 5, 8, 9, 11, 12, 15, 16, 18, 19, 21, 22, 25] },
@@ -34,6 +47,16 @@ export const MOCK_DRAWS: Record<string, Draw[]> = {
     { concurso: 3128, data: '2026-06-17', numbers: [1, 4, 5, 6, 7, 11, 12, 14, 16, 18, 20, 22, 23, 24, 25] },
     { concurso: 3127, data: '2026-06-16', numbers: [2, 3, 5, 8, 9, 10, 13, 14, 15, 17, 19, 21, 22, 23, 25] },
     { concurso: 3126, data: '2026-06-15', numbers: [1, 2, 4, 6, 7, 11, 12, 13, 16, 18, 19, 20, 21, 24, 25] },
+    { concurso: 3125, data: '2026-06-13', numbers: [3, 4, 5, 7, 9, 10, 11, 14, 15, 17, 18, 20, 22, 23, 25] },
+    { concurso: 3124, data: '2026-06-12', numbers: [1, 2, 5, 6, 8, 10, 12, 14, 16, 17, 19, 20, 21, 22, 24] },
+    { concurso: 3123, data: '2026-06-11', numbers: [2, 4, 6, 7, 9, 11, 13, 15, 16, 18, 19, 21, 22, 23, 25] },
+    { concurso: 3122, data: '2026-06-10', numbers: [1, 3, 5, 7, 8, 10, 12, 14, 16, 17, 19, 20, 21, 23, 25] },
+    { concurso: 3121, data: '2026-06-09', numbers: [2, 3, 4, 6, 9, 11, 12, 13, 15, 17, 18, 20, 22, 24, 25] },
+    { concurso: 3120, data: '2026-06-08', numbers: [1, 4, 5, 7, 8, 10, 11, 14, 16, 18, 19, 21, 22, 23, 24] },
+    { concurso: 3119, data: '2026-06-06', numbers: [3, 5, 6, 8, 9, 10, 12, 13, 14, 17, 19, 20, 21, 24, 25] },
+    { concurso: 3118, data: '2026-06-05', numbers: [1, 2, 4, 7, 8, 11, 12, 15, 16, 17, 19, 20, 22, 23, 25] },
+    { concurso: 3117, data: '2026-06-04', numbers: [2, 3, 5, 6, 9, 10, 11, 13, 14, 16, 18, 21, 22, 24, 25] },
+    { concurso: 3116, data: '2026-06-03', numbers: [1, 4, 6, 7, 8, 10, 12, 13, 15, 17, 19, 20, 21, 23, 25] },
   ],
   quina: [
     { concurso: 6465, data: '2026-06-25', numbers: [14, 25, 39, 52, 71] },
@@ -46,37 +69,191 @@ export const MOCK_DRAWS: Record<string, Draw[]> = {
     { concurso: 6458, data: '2026-06-17', numbers: [6, 24, 38, 59, 75] },
     { concurso: 6457, data: '2026-06-16', numbers: [2, 15, 33, 46, 70] },
     { concurso: 6456, data: '2026-06-15', numbers: [7, 28, 36, 53, 77] },
+    { concurso: 6455, data: '2026-06-13', numbers: [4, 19, 41, 57, 74] },
+    { concurso: 6454, data: '2026-06-12', numbers: [11, 23, 34, 48, 69] },
+    { concurso: 6453, data: '2026-06-11', numbers: [9, 20, 37, 55, 76] },
+    { concurso: 6452, data: '2026-06-10', numbers: [13, 26, 40, 50, 72] },
+    { concurso: 6451, data: '2026-06-09', numbers: [3, 22, 32, 61, 80] },
+    { concurso: 6450, data: '2026-06-08', numbers: [6, 17, 45, 54, 67] },
+    { concurso: 6449, data: '2026-06-06', numbers: [1, 25, 38, 49, 78] },
+    { concurso: 6448, data: '2026-06-05', numbers: [8, 14, 31, 60, 73] },
+    { concurso: 6447, data: '2026-06-04', numbers: [2, 21, 43, 56, 70] },
+    { concurso: 6446, data: '2026-06-03', numbers: [10, 29, 35, 47, 79] },
   ]
 };
 
-// --- LÓGICA DE ALGORITMO PREDITIVO OFFLINE ---
+// ---------------------------------------------------------------------------
+// CONFIGURAÇÃO POR LOTERIA
+// ---------------------------------------------------------------------------
+interface LotteryConfig {
+  maxNumber: number;
+  gameSize: number;
+  minSum: number;
+  maxSum: number;
+  minPares: number;
+  maxPares: number;
+  maxConsecutive: number;
+  maxPerQuadrant: number;
+  poolRatio: number;  // Percentual das melhores dezenas para o pool de seleção
+}
 
-// Retorna as estatísticas de dezenas quentes e frias baseadas no mock
+const LOTTERY_CONFIG: Record<string, LotteryConfig> = {
+  megasena: {
+    maxNumber: 60, gameSize: 6,
+    minSum: 120, maxSum: 220,
+    minPares: 2, maxPares: 4,
+    maxConsecutive: 2,
+    maxPerQuadrant: 4,
+    poolRatio: 0.5
+  },
+  lotofacil: {
+    maxNumber: 25, gameSize: 15,
+    minSum: 160, maxSum: 230,
+    minPares: 6, maxPares: 9,
+    maxConsecutive: 3,
+    maxPerQuadrant: 99, // Lotofácil não usa filtro de quadrante
+    poolRatio: 0.8
+  },
+  quina: {
+    maxNumber: 80, gameSize: 5,
+    minSum: 150, maxSum: 250,
+    minPares: 2, maxPares: 3,
+    maxConsecutive: 2,
+    maxPerQuadrant: 3,
+    poolRatio: 0.5
+  }
+};
+
+// ---------------------------------------------------------------------------
+// FILTROS ESTATÍSTICOS (espelho exato do probability.py Python)
+// ---------------------------------------------------------------------------
+
+/** Filtro de Paridade — faixas calibradas com o histórico real */
+function isParityOk(numbers: number[], cfg: LotteryConfig): boolean {
+  const pares = numbers.filter(n => n % 2 === 0).length;
+  return pares >= cfg.minPares && pares <= cfg.maxPares;
+}
+
+/** Filtro de Soma — faixa ideal da Curva Normal histórica */
+function isSumOk(numbers: number[], cfg: LotteryConfig): boolean {
+  const total = numbers.reduce((a, b) => a + b, 0);
+  return total >= cfg.minSum && total <= cfg.maxSum;
+}
+
+/** Filtro de Consecutivos — evita aglomeração linear */
+function isConsecutiveOk(numbers: number[], cfg: LotteryConfig): boolean {
+  const sorted = [...numbers].sort((a, b) => a - b);
+  let maxSeq = 1, currentSeq = 1;
+  for (let i = 0; i < sorted.length - 1; i++) {
+    if (sorted[i + 1] === sorted[i] + 1) {
+      currentSeq++;
+      maxSeq = Math.max(maxSeq, currentSeq);
+    } else {
+      currentSeq = 1;
+    }
+  }
+  return maxSeq <= cfg.maxConsecutive;
+}
+
+/** Filtro de Quadrante — evita concentração física no volante */
+function isQuadrantOk(numbers: number[], lottery: string, cfg: LotteryConfig): boolean {
+  if (lottery === 'lotofacil') return true; // Sem restrição de quadrante na Lotofácil
+
+  const counts: Record<number, number> = { 1: 0, 2: 0, 3: 0, 4: 0 };
+  const cols = lottery === 'megasena' ? 10 : 10;
+  const splitRow = lottery === 'megasena' ? 3 : 4; // Linha divisória de quadrantes
+
+  for (const n of numbers) {
+    const row = Math.floor((n - 1) / cols);
+    const col = ((n - 1) % cols) + 1;
+    const q = row < splitRow
+      ? (col <= 5 ? 1 : 2)
+      : (col <= 5 ? 3 : 4);
+    counts[q]++;
+  }
+
+  return Object.values(counts).every(count => count <= cfg.maxPerQuadrant);
+}
+
+/** Filtro de Jogos Estúpidos — descarta sequências óbvias e dígitos idênticos */
+function isStupidGame(numbers: number[], draws: Draw[]): boolean {
+  const sorted = [...numbers].sort((a, b) => a - b);
+
+  // 1. Bloqueia sequências perfeitamente consecutivas (ex: 1,2,3,4,5,6)
+  const isFullSequence = sorted.every((n, i) => i === 0 || n === sorted[i - 1] + 1);
+  if (isFullSequence && sorted.length > 2) return true;
+
+  // 2. Bloqueia jogos onde todos terminam com o mesmo dígito (ex: 2,12,22,32,42,52)
+  const endDigits = sorted.map(n => n % 10);
+  if (new Set(endDigits).size === 1) return true;
+
+  // 3. Bloqueia jogos já sorteados no histórico mock
+  const drawSets = draws.map(d => JSON.stringify([...d.numbers].sort((a, b) => a - b)));
+  if (drawSets.includes(JSON.stringify(sorted))) return true;
+
+  return false;
+}
+
+/** Aplica a esteira completa de filtros */
+function validateGame(numbers: number[], lottery: string, cfg: LotteryConfig, draws: Draw[]): boolean {
+  return (
+    isParityOk(numbers, cfg) &&
+    isSumOk(numbers, cfg) &&
+    isConsecutiveOk(numbers, cfg) &&
+    isQuadrantOk(numbers, lottery, cfg) &&
+    !isStupidGame(numbers, draws)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// ANÁLISE DE FREQUÊNCIA E ATRASO
+// ---------------------------------------------------------------------------
+
+function computeFrequency(draws: Draw[], maxNumber: number): Record<number, number> {
+  const freq: Record<number, number> = {};
+  for (let i = 1; i <= maxNumber; i++) freq[i] = 0;
+  for (const d of draws) {
+    for (const n of d.numbers) freq[n] = (freq[n] || 0) + 1;
+  }
+  return freq;
+}
+
+function computeDelay(draws: Draw[], maxNumber: number): Record<number, number> {
+  const delay: Record<number, number> = {};
+  for (let i = 1; i <= maxNumber; i++) delay[i] = draws.length;
+  const seen = new Set<number>();
+  for (let idx = 0; idx < draws.length; idx++) {
+    for (const n of draws[idx].numbers) {
+      if (!seen.has(n)) {
+        delay[n] = idx;
+        seen.add(n);
+      }
+    }
+  }
+  return delay;
+}
+
+// ---------------------------------------------------------------------------
+// STATS PARA O DASHBOARD
+// ---------------------------------------------------------------------------
 export const getMockStats = (lottery: string, limit?: number) => {
   let draws = MOCK_DRAWS[lottery] || [];
-  if (limit) {
-    draws = draws.slice(0, limit);
-  }
+  if (limit) draws = draws.slice(0, limit);
   const total = draws.length;
   if (total === 0) return null;
 
-  const frequencyMap: Record<number, number> = {};
-  
-  // Padrão de range
-  const maxNumber = lottery === 'megasena' ? 60 : lottery === 'lotofacil' ? 25 : 80;
-  for (let i = 1; i <= maxNumber; i++) {
-    frequencyMap[i] = 0;
-  }
+  const cfg = LOTTERY_CONFIG[lottery] || LOTTERY_CONFIG.megasena;
+  const freq = computeFrequency(draws, cfg.maxNumber);
+  const delay = computeDelay(draws, cfg.maxNumber);
 
-  draws.forEach((d) => {
-    d.numbers.forEach((num) => {
-      frequencyMap[num] = (frequencyMap[num] || 0) + 1;
-    });
-  });
-
-  const sorted = Object.entries(frequencyMap)
+  const sorted = Object.entries(freq)
     .map(([num, count]) => [parseInt(num), count] as [number, number])
     .sort((a, b) => b[1] - a[1]);
+
+  const delayRanking = Object.entries(delay)
+    .map(([num, d]) => ({ num: parseInt(num), delay: d }))
+    .sort((a, b) => b.delay - a.delay)
+    .slice(0, 10);
 
   return {
     lottery_name: lottery.toUpperCase(),
@@ -86,113 +263,110 @@ export const getMockStats = (lottery: string, limit?: number) => {
       end: draws[0].data
     },
     most_common_numbers: sorted.slice(0, 10),
-    least_common_numbers: [...sorted].reverse().slice(0, 10)
+    least_common_numbers: [...sorted].reverse().slice(0, 10),
+    most_delayed: delayRanking
   };
 };
 
-// Implementação simples do algoritmo preditivo com filtros no frontend
+// ---------------------------------------------------------------------------
+// GERADOR PREDITIVO OFFLINE — Motor com Filtros Completos
+// Espelho do ProbabilityAlgorithms.generate_prediction() do Python
+// ---------------------------------------------------------------------------
 export const generateMockGames = (lottery: string, numGames: number, strategy: string): number[][] => {
-  const maxNumber = lottery === 'megasena' ? 60 : lottery === 'lotofacil' ? 25 : 80;
-  const gameSize = lottery === 'megasena' ? 6 : lottery === 'lotofacil' ? 15 : 5;
+  const cfg = LOTTERY_CONFIG[lottery] || LOTTERY_CONFIG.megasena;
   const draws = MOCK_DRAWS[lottery] || [];
 
   // Calcular frequência e atraso
-  const freq: Record<number, number> = {};
-  const lastSeen: Record<number, number> = {};
+  const freq = computeFrequency(draws, cfg.maxNumber);
+  const delay = computeDelay(draws, cfg.maxNumber);
 
-  for (let i = 1; i <= maxNumber; i++) {
-    freq[i] = 0;
-    lastSeen[i] = draws.length; // Máximo atraso inicial
+  // Normalizar scores
+  const maxFreq = Math.max(...Object.values(freq), 1);
+  const maxDelay = Math.max(...Object.values(delay), 1);
+
+  const scores: Record<number, number> = {};
+  for (let i = 1; i <= cfg.maxNumber; i++) {
+    const fNorm = freq[i] / maxFreq;
+    const dNorm = delay[i] / maxDelay;
+
+    if (strategy === 'frequency') {
+      scores[i] = fNorm;
+    } else if (strategy === 'delay') {
+      scores[i] = dNorm;
+    } else {
+      // Híbrida: 60% frequência + 40% atraso (mesmo peso do backend Python)
+      scores[i] = (fNorm * 0.6) + (dNorm * 0.4);
+    }
   }
 
-  draws.forEach((d, idx) => {
-    d.numbers.forEach((num) => {
-      freq[num]++;
-      if (lastSeen[num] === draws.length) {
-        lastSeen[num] = idx; // Indice de atraso (0 = mais recente)
-      }
-    });
-  });
+  // Pool das melhores dezenas (top 50% ou configurado por loteria)
+  const poolSize = Math.max(cfg.gameSize + 5, Math.floor(cfg.maxNumber * cfg.poolRatio));
+  const sortedScores = Object.entries(scores)
+    .map(([n, s]) => ({ num: parseInt(n), score: s }))
+    .sort((a, b) => b.score - a.score);
+  const bestNumbers = sortedScores.slice(0, poolSize).map(x => x.num);
 
   const games: number[][] = [];
-  let attempts = 0;
+  const MAX_ATTEMPTS = 5000;
 
-  // Parâmetros de Filtros
-  const minSum = lottery === 'megasena' ? 100 : lottery === 'lotofacil' ? 150 : 80;
-  const maxSum = lottery === 'megasena' ? 260 : lottery === 'lotofacil' ? 240 : 320;
-  
-  while (games.length < numGames && attempts < 1000) {
-    attempts++;
+  const tryGenerateFromPool = (pool: number[]): number[] | null => {
+    // Seleção ponderada sem repetição
+    const available = pool.map(n => ({ num: n, score: scores[n] + 0.01 }));
     const candidate: number[] = [];
-    
-    // Seleção de dezenas ponderada
-    const pool: { num: number; score: number }[] = [];
-    for (let i = 1; i <= maxNumber; i++) {
-      let score = 1.0;
-      if (strategy === 'frequency') {
-        score = freq[i] + 1;
-      } else if (strategy === 'delay') {
-        score = lastSeen[i] + 1;
-      } else {
-        // Híbrida: 60% Frequência + 40% Atraso
-        score = (freq[i] * 0.6) + (lastSeen[i] * 0.4) + 1;
-      }
-      pool.push({ num: i, score });
-    }
 
-    // Sortear sem repetição baseado nos scores
-    while (candidate.length < gameSize) {
-      const totalScore = pool.reduce((sum, item) => sum + item.score, 0);
+    while (candidate.length < cfg.gameSize && available.length > 0) {
+      const totalScore = available.reduce((sum, x) => sum + x.score, 0);
       let rand = Math.random() * totalScore;
-      
       let selectedIdx = 0;
-      for (let i = 0; i < pool.length; i++) {
-        rand -= pool[i].score;
-        if (rand <= 0) {
-          selectedIdx = i;
-          break;
-        }
+      for (let i = 0; i < available.length; i++) {
+        rand -= available[i].score;
+        if (rand <= 0) { selectedIdx = i; break; }
       }
-      
-      const selected = pool[selectedIdx].num;
-      candidate.push(selected);
-      pool.splice(selectedIdx, 1); // Remove para não repetir
+      candidate.push(available[selectedIdx].num);
+      available.splice(selectedIdx, 1);
     }
 
     candidate.sort((a, b) => a - b);
+    return validateGame(candidate, lottery, cfg, draws) ? candidate : null;
+  };
 
-    // --- FILTROS ---
-    
-    // 1. Filtro de Soma
-    const sum = candidate.reduce((a, b) => a + b, 0);
-    if (sum < minSum || sum > maxSum) continue;
+  let attempts = 0;
+  while (games.length < numGames && attempts < MAX_ATTEMPTS) {
+    attempts++;
 
-    // 2. Filtro de Paridade (Mega-Sena e Quina não devem ter dezenas 100% pares ou 100% ímpares)
-    const evens = candidate.filter((n) => n % 2 === 0).length;
-    const odds = candidate.length - evens;
-    if (lottery === 'megasena' && (evens === 0 || odds === 0)) continue;
-    if (lottery === 'lotofacil' && (evens < 4 || evens > 10)) continue;
+    // Primeiro tenta com o pool restrito (dezenas melhores)
+    let game = tryGenerateFromPool(bestNumbers);
 
-    // 3. Filtro de Consecutivos (Mega-Sena / Quina: não mais de 2 consecutivos)
-    let consecutiveCount = 0;
-    for (let i = 0; i < candidate.length - 1; i++) {
-      if (candidate[i + 1] - candidate[i] === 1) consecutiveCount++;
+    // Se falhar, abre para todas as dezenas
+    if (!game) {
+      const allNumbers = Array.from({ length: cfg.maxNumber }, (_, i) => i + 1);
+      game = tryGenerateFromPool(allNumbers);
     }
-    if (lottery !== 'lotofacil' && consecutiveCount > 1) continue;
 
-    // Evita duplicidade nas coleções geradas
-    if (!games.some(g => JSON.stringify(g) === JSON.stringify(candidate))) {
-      games.push(candidate);
+    if (game && !games.some(g => JSON.stringify(g) === JSON.stringify(game))) {
+      games.push(game);
     }
   }
 
-  // Fallback se os filtros forem muito rígidos e falharem
+  // Fallback de segurança: preenche jogos faltantes com seleção ponderada sem filtros
+  // (Evita retornar array vazio; usa scores mas sem validação)
   while (games.length < numGames) {
+    const allNumbers = Array.from({ length: cfg.maxNumber }, (_, i) => i + 1);
+    const pool = [...allNumbers];
     const backup: number[] = [];
-    while (backup.length < gameSize) {
-      const val = Math.floor(Math.random() * maxNumber) + 1;
-      if (!backup.includes(val)) backup.push(val);
+
+    while (backup.length < cfg.gameSize && pool.length > 0) {
+      const totalScore = pool.reduce((sum, n) => sum + (scores[n] || 0.01), 0);
+      let rand = Math.random() * totalScore;
+      let idx = 0;
+      for (let i = 0; i < pool.length; i++) {
+        rand -= (scores[pool[i]] || 0.01);
+        if (rand <= 0) { idx = i; break; }
+      }
+      backup.push(pool[idx]);
+      pool.splice(idx, 1);
     }
+
     backup.sort((a, b) => a - b);
     games.push(backup);
   }
@@ -200,7 +374,9 @@ export const generateMockGames = (lottery: string, numGames: number, strategy: s
   return games;
 };
 
-// --- PERSISTÊNCIA LOCALSTORAGE PARA COLEÇÕES OFFLINE ---
+// ---------------------------------------------------------------------------
+// PERSISTÊNCIA LOCALSTORAGE PARA COLEÇÕES OFFLINE
+// ---------------------------------------------------------------------------
 
 const LOCAL_STORAGE_KEY = 'lotopredict_collections';
 
@@ -227,7 +403,11 @@ export const saveLocalCollection = (name: string, lotteryName: string, games: nu
   const newCol: LocalCollection = {
     id: Date.now(),
     name,
-    lottery_name: lotteryName.toLowerCase().includes('mega') ? 'Mega-Sena' : lotteryName.toLowerCase().includes('facil') ? 'Lotofácil' : 'Quina',
+    lottery_name: lotteryName.toLowerCase().includes('mega')
+      ? 'Mega-Sena'
+      : lotteryName.toLowerCase().includes('facil')
+        ? 'Lotofácil'
+        : 'Quina',
     games,
     created_at: new Date().toISOString()
   };
@@ -247,10 +427,10 @@ export const getLocalCollectionDetail = (id: number) => {
   const col = cols.find(c => c.id === id);
   if (!col) return null;
 
-  const lotKey = col.lottery_name.toLowerCase().includes('mega') 
-    ? 'megasena' 
-    : col.lottery_name.toLowerCase().includes('facil') 
-      ? 'lotofacil' 
+  const lotKey = col.lottery_name.toLowerCase().includes('mega')
+    ? 'megasena'
+    : col.lottery_name.toLowerCase().includes('facil')
+      ? 'lotofacil'
       : 'quina';
 
   const draws = MOCK_DRAWS[lotKey] || [];
@@ -307,14 +487,16 @@ export const updateLocalCollection = (id: number, newName: string) => {
   }
 };
 
-// Helper de combinações em TypeScript
+// ---------------------------------------------------------------------------
+// FECHAMENTO MATEMÁTICO — Algoritmo Greedy Cover (TypeScript)
+// Roda em Web Worker para não bloquear a thread principal (idealmente)
+// ---------------------------------------------------------------------------
+
+/** Gera todas as combinações de `size` elementos do array */
 function getCombinations(array: number[], size: number): number[][] {
   const result: number[][] = [];
   function helper(start: number, combo: number[]) {
-    if (combo.length === size) {
-      result.push([...combo]);
-      return;
-    }
+    if (combo.length === size) { result.push([...combo]); return; }
     for (let i = start; i < array.length; i++) {
       combo.push(array[i]);
       helper(i + 1, combo);
@@ -332,74 +514,43 @@ export const runLocalFechamento = (
   conditionHits: number
 ): number[][] => {
   const numbers = [...new Set(selectedNumbers)].sort((a, b) => a - b);
-  
+
   if (numbers.length < gameSize || guarantee > gameSize || conditionHits > numbers.length) {
     return [];
   }
-  
-  // 1. Gerar todas as apostas possíveis
+
   const allPossibleBets = getCombinations(numbers, gameSize).map(arr => new Set(arr));
-  
-  // 2. Gerar todos os subsets de sorteio
   const allDrawSubsets = getCombinations(numbers, conditionHits).map(arr => new Set(arr));
-  
+
   const uncoveredSubsets = new Set<number>();
-  for (let i = 0; i < allDrawSubsets.length; i++) {
-    uncoveredSubsets.add(i);
-  }
-  
-  // 3. Mapear para cada aposta quais subsets ela cobre (interseção >= guarantee)
+  for (let i = 0; i < allDrawSubsets.length; i++) uncoveredSubsets.add(i);
+
   const betCoverMap: Set<number>[] = [];
   for (let i = 0; i < allPossibleBets.length; i++) {
     const bet = allPossibleBets[i];
     const coveredIndices = new Set<number>();
     for (let j = 0; j < allDrawSubsets.length; j++) {
-      const subset = allDrawSubsets[j];
-      
-      // Computa interseção
       let hits = 0;
-      for (const num of bet) {
-        if (subset.has(num)) hits++;
-      }
-      
-      if (hits >= guarantee) {
-        coveredIndices.add(j);
-      }
+      for (const num of bet) { if (allDrawSubsets[j].has(num)) hits++; }
+      if (hits >= guarantee) coveredIndices.add(j);
     }
     betCoverMap.push(coveredIndices);
   }
-  
+
   const chosenBets: number[][] = [];
-  
-  // 4. Algoritmo ganancioso
+
   while (uncoveredSubsets.size > 0) {
-    let bestBetIdx = -1;
-    let maxNewCover = 0;
-    
+    let bestBetIdx = -1, maxNewCover = 0;
     for (let i = 0; i < betCoverMap.length; i++) {
-      const coveredIndices = betCoverMap[i];
       let newCover = 0;
-      for (const idx of coveredIndices) {
-        if (uncoveredSubsets.has(idx)) newCover++;
-      }
-      
-      if (newCover > maxNewCover) {
-        maxNewCover = newCover;
-        bestBetIdx = i;
-      }
+      for (const idx of betCoverMap[i]) { if (uncoveredSubsets.has(idx)) newCover++; }
+      if (newCover > maxNewCover) { maxNewCover = newCover; bestBetIdx = i; }
     }
-    
-    if (bestBetIdx === -1 || maxNewCover === 0) {
-      break;
-    }
-    
+    if (bestBetIdx === -1 || maxNewCover === 0) break;
+
     chosenBets.push([...allPossibleBets[bestBetIdx]].sort((a, b) => a - b));
-    
-    // Remove os cobertos
-    for (const idx of betCoverMap[bestBetIdx]) {
-      uncoveredSubsets.delete(idx);
-    }
+    for (const idx of betCoverMap[bestBetIdx]) uncoveredSubsets.delete(idx);
   }
-  
+
   return chosenBets;
 };

@@ -1,0 +1,35 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+.env
+*.egg-info/
+dist/
+build/
+
+# SQLite (banco local — não vai para produção)
+*.db
+*.sqlite3
+
+# Logs e temporários
+*.log
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+
+# Arquivos de configuração local sensíveis
+.env.local
+.env.production
+
+# Manter no repositório (necessários para o deploy)
+# !Dockerfile
+# !render.yaml
+# !.env.example

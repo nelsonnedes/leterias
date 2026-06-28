@@ -3,7 +3,8 @@ import httpx
 import os
 import sys
 from datetime import datetime
-from sqlalchemy import func
+from sqlalchemy import text
+from sqlalchemy.exc import IntegrityError
 
 # Ajusta o path do Python para poder rodar o script diretamente da raiz do backend
 sys.path.append(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
@@ -16,7 +17,7 @@ from app.core.config import settings
 LOTTERIES = {
     "megasena": {"db_name": "Megasena", "endpoint": "megasena"},
     "lotofacil": {"db_name": "Lotofacil", "endpoint": "lotofacil"},
-    "quina": {"db_name": "Quina", "endpoint": "quina"}
+    "quina":     {"db_name": "Quina",     "endpoint": "quina"}
 }
 
 # Cabeçalhos padrão para emular navegador e evitar bloqueios
@@ -26,147 +27,213 @@ HEADERS = {
     "Accept-Language": "pt-BR,pt;q=0.9,en-US;q=0.8,en;q=0.7",
 }
 
-async def fetch_draw(client: httpx.AsyncClient, lottery_endpoint: str, concurso: int, sem: asyncio.Semaphore) -> dict:
+async def fetch_draw(
+    client: httpx.AsyncClient,
+    lottery_endpoint: str,
+    concurso: int,
+    sem: asyncio.Semaphore,
+    db_name: str
+) -> dict | None:
     """Busca um sorteio específico pela API oficial da Caixa utilizando semáforo."""
     url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{lottery_endpoint}/{concurso}"
     async with sem:
         for attempt in range(3):
             try:
-                # Espaçamento entre chamadas concorrentes para preservar o IP
-                await asyncio.sleep(0.12)
-                
-                res = await client.get(url, headers=HEADERS, timeout=10.0)
+                # Espaçamento reduzido (80ms) — ainda seguro contra rate limit da Caixa
+                await asyncio.sleep(0.08)
+
+                res = await client.get(url, headers=HEADERS, timeout=12.0)
                 if res.status_code == 200:
                     data = res.json()
-                    # Converte para o nosso modelo
                     draw_date_str = data.get("dataApuracao")
                     if not draw_date_str:
                         return None
-                    
-                    # Converte data DD/MM/YYYY para objeto date do Python
+
+                    # Converte data DD/MM/YYYY → date Python
                     draw_date = datetime.strptime(draw_date_str, "%d/%m/%Y").date()
-                    
+
                     # Extrai as dezenas ordenadas
                     raw_numbers = data.get("listaDezenas", [])
-                    numbers = sorted([int(n) for n in raw_numbers if n.isdigit()])
-                    
+                    numbers = sorted([int(n) for n in raw_numbers if str(n).isdigit()])
+
                     if not numbers:
                         return None
 
                     return {
-                        "lottery_name": LOTTERIES[lottery_endpoint]["db_name"],
-                        "concurso": data.get("numero"),
+                        "lottery_name": db_name,
+                        "concurso": int(data.get("numero", concurso)),
                         "draw_date": draw_date,
                         "numbers": numbers,
                         "source_url": url,
-                        "source_reference": f"Concurso {data.get('numero')}"
+                        "source_reference": f"Concurso {data.get('numero', concurso)}"
                     }
-                elif res.status_code == 400 or res.status_code == 404:
-                    # Concurso pode não existir ainda
+
+                elif res.status_code in (400, 404):
+                    # Concurso inexistente — normal para extremos do range
                     return None
+
+                elif res.status_code == 429:
+                    # Rate limit — espera progressiva
+                    print(f"  [WARN] Rate limit ({lottery_endpoint} #{concurso}). Aguardando 5s...")
+                    await asyncio.sleep(5.0)
+
             except Exception as e:
                 if attempt == 2:
-                    print(f"Erro ao buscar {lottery_endpoint} concurso {concurso}: {str(e)}")
-        return None
+                    print(f"  [ERR] Falha em {lottery_endpoint} #{concurso}: {e}")
+                else:
+                    await asyncio.sleep(1.0 * (attempt + 1))
 
-async def load_historical_data():
-    """Inicia a rotina de carga em lote (Bulk Insert) de todo o histórico oficial."""
+    return None
+
+
+def upsert_draw(session, draw_data: dict) -> bool:
+    """
+    Insere um sorteio no banco ignorando duplicatas (por draw_date + lottery_name).
+    Retorna True se inserido, False se já existia.
+    """
+    # Verifica existência primeiro (mais rápido que capturar IntegrityError)
+    exists = session.query(LotteryResult).filter_by(
+        draw_date=draw_data["draw_date"],
+        lottery_name=draw_data["lottery_name"]
+    ).first()
+
+    if exists:
+        return False  # Já existe — pula
+
+    obj = LotteryResult(
+        lottery_name=draw_data["lottery_name"],
+        draw_date=draw_data["draw_date"],
+        numbers=draw_data["numbers"],
+        source_url=draw_data["source_url"],
+        source_reference=draw_data["source_reference"]
+    )
+    try:
+        session.add(obj)
+        session.commit()
+        return True
+    except IntegrityError:
+        session.rollback()
+        return False  # Race condition — ok ignorar
+
+
+async def load_historical_data(force_lotteries: list[str] | None = None):
+    """
+    Inicia a rotina de carga em lote (Bulk Insert) de todo o histórico oficial.
+    - force_lotteries: lista opcional para restringir a quais loterias processar
+      ex: ['quina'] para reprocessar apenas a Quina
+    """
     print("=== LotoPredict Engine - Carga Histórica Completa ===")
-    
+
+    targets = {k: v for k, v in LOTTERIES.items() if not force_lotteries or k in force_lotteries}
+
     async with httpx.AsyncClient(verify=False) as client:
-        # 1. Obter o último concurso online de cada loteria para saber o limite de repetição
-        latest_concursos = {}
-        for key, spec in LOTTERIES.items():
+        # 1. Obter o último concurso online de cada loteria
+        latest_concursos: dict[str, int] = {}
+        FALLBACKS = {"megasena": 2800, "lotofacil": 3140, "quina": 6470}
+
+        for key, spec in targets.items():
             url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{spec['endpoint']}"
             try:
-                res = await client.get(url, headers=HEADERS, timeout=10.0)
+                res = await client.get(url, headers=HEADERS, timeout=15.0)
                 if res.status_code == 200:
                     data = res.json()
-                    latest_concursos[key] = data.get("numero")
+                    latest_concursos[key] = int(data.get("numero", FALLBACKS[key]))
                     print(f"Último concurso online do {spec['db_name']}: {latest_concursos[key]}")
                 else:
-                    latest_concursos[key] = 2800 # Fallback se falhar
+                    latest_concursos[key] = FALLBACKS[key]
+                    print(f"[WARN] Fallback para {spec['db_name']}: {FALLBACKS[key]}")
             except Exception as e:
-                print(f"Erro ao buscar último concurso de {key}: {str(e)}")
-                latest_concursos[key] = 2800
+                latest_concursos[key] = FALLBACKS[key]
+                print(f"[WARN] Erro ao buscar último concurso de {key}: {e}. Usando fallback {FALLBACKS[key]}.")
 
-        # Conectar ao banco de dados SQLite/Postgres
+        # 2. Conectar ao banco
         session = SessionLocal()
-        
-        # Limite de 10 chamadas assíncronas concorrentes por segundo para evitar WAF/Rate limit
-        sem = asyncio.Semaphore(10)
 
-        for key, spec in LOTTERIES.items():
+        # Semáforo: 15 chamadas concorrentes (seguro, API Caixa suporta ~20 req/s)
+        sem = asyncio.Semaphore(15)
+
+        for key, spec in targets.items():
             db_name = spec["db_name"]
             endpoint = spec["endpoint"]
-            max_draw = latest_concursos[key]
+            max_draw = latest_concursos.get(key, FALLBACKS[key])
 
-            # Busca referências existentes no banco para extrair o número do concurso
+            # Busca os concursos já gravados no banco via source_reference
             existing_rows = (
                 session.query(LotteryResult.source_reference)
                 .filter(LotteryResult.lottery_name == db_name)
                 .all()
             )
-            
-            existing_draws = set()
-            for r in existing_rows:
-                ref = r[0]
+
+            existing_draws: set[int] = set()
+            for (ref,) in existing_rows:
                 if ref and ref.startswith("Concurso "):
                     parts = ref.split()
                     if len(parts) >= 2:
                         try:
-                            # Extrai os dígitos do número do concurso
-                            num = int(''.join(filter(str.isdigit, parts[1])))
-                            existing_draws.add(num)
+                            existing_draws.add(int(''.join(filter(str.isdigit, parts[1]))))
                         except ValueError:
                             pass
 
             missing_draws = [c for c in range(1, max_draw + 1) if c not in existing_draws]
-            
+
             if not missing_draws:
-                print(f"[{db_name}] Já está 100% atualizado com {len(existing_draws)} sorteios.")
+                print(f"[{db_name}] [OK] 100% atualizado ({len(existing_draws)} sorteios no banco).")
                 continue
 
-            print(f"[{db_name}] Encontrado {len(existing_draws)} no banco. Baixando {len(missing_draws)} sorteios faltantes...")
+            print(f"\n[{db_name}] >> {len(existing_draws)} no banco. Faltam {len(missing_draws)} concursos (1 a {max_draw})...")
 
-            # Divide os faltantes em lotes de 100 para comitar em partes
-            chunk_size = 100
+            # 3. Processar em lotes de 200
+            chunk_size = 200
+            total_inserted = 0
+            total_skipped = 0
+
             for i in range(0, len(missing_draws), chunk_size):
-                chunk = missing_draws[i:i+chunk_size]
-                
-                # Agenda as tarefas concorrentes do lote
-                tasks = [fetch_draw(client, endpoint, c, sem) for c in chunk]
+                chunk = missing_draws[i:i + chunk_size]
+                lote_num = (i // chunk_size) + 1
+                total_lotes = (len(missing_draws) + chunk_size - 1) // chunk_size
+
+                tasks = [fetch_draw(client, endpoint, c, sem, db_name) for c in chunk]
                 results = await asyncio.gather(*tasks)
-                
-                # Filtra os resultados válidos
+
                 valid_draws = [r for r in results if r is not None]
-                
-                if valid_draws:
-                    # Executa o Bulk Insert no SQLAlchemy
-                    db_objects = [
-                        LotteryResult(
-                            lottery_name=d["lottery_name"],
-                            draw_date=d["draw_date"],
-                            numbers=d["numbers"],
-                            source_url=d["source_url"],
-                            source_reference=d["source_reference"]
-                        )
-                        for d in valid_draws
-                    ]
-                    
-                    try:
-                        session.add_all(db_objects)
-                        session.commit()
-                        print(f"[{db_name}] Lote comitado com sucesso. Gravado {len(db_objects)} novos sorteios. ({chunk[0]} a {chunk[-1]})")
-                    except Exception as e:
-                        session.rollback()
-                        print(f"[{db_name}] Erro ao comitar lote: {str(e)}")
-                
+                inserted = 0
+                skipped = 0
+
+                # Inserção INDIVIDUAL com tratamento de duplicata por registro
+                for draw in valid_draws:
+                    if upsert_draw(session, draw):
+                        inserted += 1
+                    else:
+                        skipped += 1
+
+                total_inserted += inserted
+                total_skipped += skipped
+
+                print(
+                    f"  [{db_name}] Lote {lote_num}/{total_lotes} "
+                    f"(concursos {chunk[0]}-{chunk[-1]}): "
+                    f"[+{inserted} inseridos] [{skipped} ignorados]"
+                )
+
+            print(f"\n[{db_name}] [DONE] Concluido: {total_inserted} inseridos, {total_skipped} ja existiam.")
+
         session.close()
-        print("=== Carga Histórica Finalizada com Sucesso ===")
+        print("\n=== [OK] Carga Historica Finalizada com Sucesso ===")
+
 
 if __name__ == "__main__":
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-    
-    asyncio.run(load_historical_data())
+
+    import argparse
+    parser = argparse.ArgumentParser(description="LotoPredict — Carga Histórica de Sorteios")
+    parser.add_argument(
+        "--lottery", "-l",
+        choices=["megasena", "lotofacil", "quina"],
+        nargs="+",
+        default=None,
+        help="Restringir a loteria(s) a processar (padrão: todas)"
+    )
+    args = parser.parse_args()
+
+    asyncio.run(load_historical_data(force_lotteries=args.lottery))

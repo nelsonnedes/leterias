@@ -12,21 +12,32 @@ import {
 } from './mockData';
 
 const getBaseURL = () => {
+  // 1. Variável de ambiente explícita (maior prioridade — configura no .env ou no Vercel Dashboard)
   if (import.meta.env.VITE_API_URL) {
     return import.meta.env.VITE_API_URL;
   }
+
+  // 2. URL do backend hospedado no Render (configura VITE_RENDER_API_URL no Vercel Dashboard)
+  if (import.meta.env.VITE_RENDER_API_URL) {
+    return import.meta.env.VITE_RENDER_API_URL;
+  }
+
+  // 3. Detecção de ambiente
   if (typeof window !== 'undefined') {
     const hostname = window.location.hostname;
     if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      // Desenvolvimento local
       return 'http://localhost:8000/api/v1';
     }
+    // Produção (Vercel) sem variável de ambiente — modo offline
+    return '';
   }
-  return '/api/v1';
+  return '';
 };
 
 const api = axios.create({
   baseURL: getBaseURL(),
-  timeout: 2500, // Timeout de 2.5s para chaveamento resiliente em conexões móveis/lentas
+  timeout: 4000, // 4s: permite cold start do Render free tier (~2-3s) antes de cair para offline
   headers: {
     'Content-Type': 'application/json',
   }
