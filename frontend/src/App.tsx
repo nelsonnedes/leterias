@@ -126,25 +126,30 @@ function App() {
       </main>
 
       {/* Rodapé */}
-      <footer className="border-t border-dark-border bg-dark-card/20 py-6 mt-12 text-center text-xs text-gray-600">
-        <div className="max-w-7xl mx-auto px-6 flex flex-col md:flex-row items-center justify-between gap-4">
-          <div className="text-left space-y-1">
-            <p className="m-0">© 2026 LotoPredict Engine. Construído sob fundamentos matemáticos e de probabilidade.</p>
-            <p className="m-0 text-gray-500">
-              Desenvolvedor: <span className="font-bold text-gray-400">Nelson Brito</span> | Contato:{' '}
-              <a href="mailto:nedes1@hotmail.com" className="hover:text-blue-400 transition-colors flex inline-flex items-center gap-1">
-                <Mail className="w-3.5 h-3.5" /> nedes1@hotmail.com
-              </a>
-            </p>
-          </div>
+      <footer className="border-t border-dark-border bg-dark-card/20 py-8 mt-12 text-center text-xs text-gray-600">
+        <div className="max-w-7xl mx-auto px-6 flex flex-col items-center justify-center gap-5">
+          {/* Botão de Apoio Acima */}
           <div>
             <button
               onClick={() => setShowPixModal(true)}
-              className="px-4 py-2 bg-pink-600/10 hover:bg-pink-600/25 border border-pink-500/20 text-pink-400 font-bold rounded-xl flex items-center gap-2 transition-all duration-300 cursor-pointer text-xs"
+              className="px-5 py-2.5 bg-pink-600/10 hover:bg-pink-600/25 border border-pink-500/20 text-pink-400 font-bold rounded-xl flex items-center gap-2 transition-all duration-300 cursor-pointer text-xs shadow-lg shadow-pink-500/5 hover:scale-105"
             >
               <Heart className="w-4 h-4 fill-current" />
               Apoiar Projeto (PIX)
             </button>
+          </div>
+          
+          {/* Textos Centralizados */}
+          <div className="space-y-1.5 text-center">
+            <p className="m-0">© 2026 LotoPredict Engine. Construído sob fundamentos matemáticos e de probabilidade.</p>
+            <p className="m-0 text-gray-500 flex flex-wrap items-center justify-center gap-1.5">
+              <span>Desenvolvedor: <span className="font-bold text-gray-400">Nelson Brito</span></span>
+              <span className="hidden sm:inline text-gray-700">|</span>
+              <span>Contato:</span>
+              <a href="mailto:nedes1@hotmail.com" className="hover:text-blue-400 text-gray-400 font-medium transition-colors inline-flex items-center gap-1">
+                <Mail className="w-3.5 h-3.5 text-gray-500" /> nedes1@hotmail.com
+              </a>
+            </p>
           </div>
         </div>
       </footer>
