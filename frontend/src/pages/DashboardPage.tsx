@@ -172,7 +172,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
               <div>
                 <div className="text-xs text-gray-400 font-medium">Período</div>
                 <div className="text-xs font-semibold text-white mt-0.5">
-                  {new Date(stats.date_range.start).toLocaleDateString('pt-BR')}
+                  {stats.date_range?.start ? new Date(stats.date_range.start).toLocaleDateString('pt-BR') : '—'}
                 </div>
               </div>
             </div>

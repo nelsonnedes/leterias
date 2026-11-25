@@ -148,15 +148,19 @@ export const useApi = () => {
       const res = await api.get(`/lottery/${lotteryName}/stats`, {
         params: { limit }
       });
-      return res.data;
-    } catch (err: any) {
-      if (isNetworkError(err)) {
-        console.warn('API local offline. Usando estatísticas do mock.');
-        const mock = getMockStats(lotteryName, limit);
-        if (mock) return mock;
+      // Em produção sem backend, o fallback de rota do Vercel pode responder 200 com HTML.
+      // Valida a forma antes de usar para não quebrar a interface.
+      if (res.data && typeof res.data === 'object' && res.data.date_range && res.data.total_results !== undefined) {
+        return res.data;
       }
-      throw err;
+    } catch (err: any) {
+      if (!isNetworkError(err)) throw err;
     }
+
+    console.warn('API local offline. Usando estatísticas do mock.');
+    const mock = getMockStats(lotteryName, limit);
+    if (mock) return mock;
+    throw new Error('Backend indisponível e sem dados locais para esta loteria.');
   };
 
   // Gerar palpites inteligentes
