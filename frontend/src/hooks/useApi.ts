@@ -72,6 +72,12 @@ export interface BacktestResponse {
   total_apostas_simuladas: number;
   hits_distribution: Record<string, number>;
   rewards_summary: Record<string, number>;
+  hits_by_draw?: {
+    concurso: number;
+    reference: string;
+    max_hits: number;
+  }[];
+  from_start?: boolean;
   simulations_detail: {
     reference: string;
     real_numbers: number[];
@@ -137,6 +143,11 @@ const isNetworkError = (error: any): boolean => {
   if (error.response.status === 404) {
     return true;
   }
+  // Backend online, mas sem histórico carregado: mesma condição de indisponibilidade
+  if (error.response.status === 400) {
+    const detail = String(error.response.data?.detail || '');
+    if (detail.includes('Histórico insuficiente')) return true;
+  }
   return false;
 };
 
@@ -194,11 +205,12 @@ export const useApi = () => {
     lotteryName: string,
     numDraws: number = 100,
     numGamesPerDraw: number = 5,
-    strategy: string = 'combined'
+    strategy: string = 'combined',
+    fromStart: boolean = false
   ): Promise<BacktestResponse> => {
     try {
       const res = await api.post(`/lottery/${lotteryName}/backtest`, null, {
-        params: { num_draws: numDraws, num_games_per_draw: numGamesPerDraw, strategy }
+        params: { num_draws: numDraws, num_games_per_draw: numGamesPerDraw, strategy, from_start: fromStart }
       });
       return res.data;
     } catch (err: any) {
@@ -250,6 +262,12 @@ export const useApi = () => {
           };
         });
 
+        const hits_by_draw = simulations_detail.map((detail) => ({
+          concurso: parseInt(detail.reference.replace('Concurso ', ''), 10) || 0,
+          reference: detail.reference,
+          max_hits: detail.max_hits_achieved,
+        }));
+
         return {
           lottery: lotteryName.toUpperCase(),
           strategy_tested: strategy,
@@ -257,6 +275,8 @@ export const useApi = () => {
           total_apostas_simuladas: availableDraws.length * numGamesPerDraw,
           hits_distribution,
           rewards_summary,
+          hits_by_draw,
+          from_start: true,
           simulations_detail
         };
       }

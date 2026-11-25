@@ -1,3 +1,5 @@
+import re
+
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
@@ -59,9 +61,10 @@ async def get_predictions(
 @router.post("/lottery/{lottery_name}/backtest", response_model=Dict[str, Any])
 async def run_backtest(
     lottery_name: str,
-    num_draws: int = Query(default=100, ge=5, le=500, description="Quantidade de concursos históricos para o teste"),
+    num_draws: int = Query(default=100, ge=5, le=5000, description="Quantidade de concursos históricos para o teste"),
     num_games_per_draw: int = Query(default=5, ge=1, le=50, description="Quantidade de jogos simulados por concurso"),
     strategy: str = Query(default="combined", description="Estratégia estatística: combined, frequency, delay ou ml_ensemble"),
+    from_start: bool = Query(default=False, description="Simular desde o concurso mais antigo do banco"),
     db: Session = Depends(get_db)
 ):
     """
@@ -92,14 +95,15 @@ async def run_backtest(
     test_draws_count = min(num_draws, max_testable)
     
     # Sorteios separados para o loop de backtest
-    start_test_idx = total_db_draws - test_draws_count
+    start_test_idx = 15 if from_start else total_db_draws - test_draws_count
     
     hits_distribution = {}  # Contagem geral de acertos
     total_games_simulated = 0
     results_detail = []
+    hits_by_draw = []  # Resumo compacto: concurso -> máximo de acertos
     
     # Loop de simulação
-    for i in range(start_test_idx, total_db_draws):
+    for i in range(start_test_idx, start_test_idx + test_draws_count):
         # 1. Histórico de "treino" (sorteios anteriores ao sorteio de teste i)
         history = [d.numbers for d in draws[0:i]]
         
@@ -127,8 +131,17 @@ async def run_backtest(
             hits_distribution[hits] = hits_distribution.get(hits, 0) + 1
             total_games_simulated += 1
             
-        # Armazena detalhes do concurso simulado
         ref = real_draw.source_reference or f"Concurso em {real_draw.draw_date.strftime('%d/%m/%Y')}"
+
+        # Resumo compacto com apenas a quantidade de acertos por concurso
+        concurso_match = re.search(r"\d+", ref)
+        hits_by_draw.append({
+            "concurso": int(concurso_match.group()) if concurso_match else 0,
+            "reference": ref,
+            "max_hits": max(draw_hits) if draw_hits else 0,
+        })
+
+        # Armazena detalhes do concurso simulado
         results_detail.append({
             "reference": ref,
             "real_numbers": real_draw.numbers,
@@ -170,7 +183,9 @@ async def run_backtest(
         "total_apostas_simuladas": total_games_simulated,
         "hits_distribution": hits_distribution,
         "rewards_summary": reward_metrics,
-        "simulations_detail": results_detail[:15]  # Retorna os detalhes dos primeiros 15 concursos testados para manter o payload leve
+        "hits_by_draw": hits_by_draw,
+        "from_start": from_start,
+        "simulations_detail": results_detail[:15]  # Detalhes dos primeiros 15 concursos para manter o payload leve
     }
 
 

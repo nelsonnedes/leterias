@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApi, type BacktestResponse } from '../hooks/useApi';
-import { TrendingUp, RefreshCw, BarChart2, Play, Award } from 'lucide-react';
+import { TrendingUp, RefreshCw, BarChart2, Play, Award, CalendarDays } from 'lucide-react';
 
 export const BacktestPage: React.FC = () => {
   const api = useApi();
@@ -10,6 +10,7 @@ export const BacktestPage: React.FC = () => {
   const [numDraws, setNumDraws] = useState<number>(100);
   const [numGamesPerDraw, setNumGamesPerDraw] = useState<number>(5);
   const [strategy, setStrategy] = useState<string>('combined');
+  const [fromStart, setFromStart] = useState<boolean>(true);
 
   // Estados de resposta
   const [backtestResult, setBacktestResult] = useState<BacktestResponse | null>(null);
@@ -20,7 +21,7 @@ export const BacktestPage: React.FC = () => {
     setLoading(true);
     setError(null);
     try {
-      const data = await api.runBacktest(lottery, numDraws, numGamesPerDraw, strategy);
+      const data = await api.runBacktest(lottery, numDraws, numGamesPerDraw, strategy, fromStart);
       setBacktestResult(data);
     } catch (err: any) {
       setError('Erro ao rodar simulação histórica. Certifique-se de que o backend possui histórico de concursos populado.');
@@ -114,6 +115,16 @@ export const BacktestPage: React.FC = () => {
               />
             </div>
 
+            <label className="flex items-center gap-3 cursor-pointer p-3 bg-dark-bg/50 border border-dark-border rounded-xl">
+              <input
+                type="checkbox"
+                checked={fromStart}
+                onChange={(e) => setFromStart(e.target.checked)}
+                className="w-4 h-4 accent-blue-500"
+              />
+              <span className="text-sm font-semibold text-gray-300">Simular desde o concurso mais antigo</span>
+            </label>
+
             <button
               onClick={handleRunBacktest}
               disabled={loading}
@@ -199,23 +210,24 @@ export const BacktestPage: React.FC = () => {
                 </div>
               </div>
 
-              {/* Log de Simulações */}
+              {/* Acertos por Concurso — visão compacta de todo o histórico simulado */}
               <div className="glass-panel p-6 rounded-2xl">
-                <h4 className="text-lg font-bold text-white pb-3 border-b border-dark-border">Log de Simulação (Últimos 5 Concursos)</h4>
-                
-                <div className="mt-4 space-y-4">
-                  {backtestResult.simulations_detail.slice(0, 5).map((detail, idx) => (
-                    <div key={idx} className="p-3 bg-dark-bg/40 border border-dark-border rounded-xl space-y-2">
-                      <div className="flex justify-between text-xs font-bold text-gray-300">
-                        <span>{detail.reference}</span>
-                        <span className="text-green-400">Máx Acertos: {detail.max_hits_achieved}</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1 text-[10px] font-bold text-gray-400">
-                        <span>Sorteado:</span>
-                        {detail.real_numbers.map(n => (
-                          <span key={n} className="px-1 bg-dark-card border border-dark-border rounded">{String(n).padStart(2, '0')}</span>
-                        ))}
-                      </div>
+                <h4 className="text-lg font-bold text-white pb-3 border-b border-dark-border flex items-center gap-2">
+                  <CalendarDays className="w-5 h-5 text-blue-400" /> Acertos por Concurso
+                </h4>
+                <p className="text-xs text-gray-500 mt-2 mb-4">
+                  {backtestResult.hits_by_draw?.length ?? backtestResult.simulations_detail.length} concursos simulados
+                  {backtestResult.from_start ? ' desde o início do histórico' : ''}.
+                </p>
+                <div className="max-h-96 overflow-y-auto pr-1 space-y-1.5">
+                  {(backtestResult.hits_by_draw ?? backtestResult.simulations_detail.map((d) => ({
+                    concurso: parseInt(d.reference.replace('Concurso ', ''), 10) || 0,
+                    reference: d.reference,
+                    max_hits: d.max_hits_achieved,
+                  }))).map((item, idx) => (
+                    <div key={`${item.reference}-${idx}`} className="flex items-center justify-between px-3 py-2 bg-dark-bg/40 border border-dark-border rounded-lg text-xs font-semibold text-gray-300">
+                      <span>{item.reference}</span>
+                      <span className="text-green-400 font-bold">{item.max_hits} acertos</span>
                     </div>
                   ))}
                 </div>
