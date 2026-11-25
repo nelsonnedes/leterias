@@ -4,17 +4,9 @@ from pydantic import BaseModel, Field
 from typing import List, Dict, Any, Optional
 from app.database.models import GameCollection, LotteryResult
 from app.database.session import get_db
+from app.core.constants import get_lottery_spec, get_display_name_by_db_name
 
 router = APIRouter()
-
-# Definições estáticas das loterias para validação e mapeamento de nomes
-LOTTERY_MAP = {
-    "megasena": {"db_name": "Megasena", "display_name": "Mega-Sena"},
-    "mega-sena": {"db_name": "Megasena", "display_name": "Mega-Sena"},
-    "lotofacil": {"db_name": "Lotofacil", "display_name": "Lotofácil"},
-    "lotofácil": {"db_name": "Lotofacil", "display_name": "Lotofácil"},
-    "quina": {"db_name": "Quina", "display_name": "Quina"},
-}
 
 class CollectionCreate(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="Nome personalizado para a coleção de apostas")
@@ -26,13 +18,7 @@ async def create_collection(collection_data: CollectionCreate, db: Session = Dep
     """
     Salva uma nova coleção de apostas com nome personalizado no banco de dados.
     """
-    name_clean = collection_data.lottery_name.lower().replace(" ", "")
-    spec = LOTTERY_MAP.get(name_clean)
-    if not spec:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Loteria '{collection_data.lottery_name}' não suportada. Use Mega-Sena, Lotofácil ou Quina."
-        )
+    spec = get_lottery_spec(collection_data.lottery_name)
     
     db_name = spec["db_name"]
     display_name = spec["display_name"]
@@ -73,12 +59,7 @@ async def list_collections(db: Session = Depends(get_db)):
     
     output = []
     for col in collections:
-        # Busca o nome de exibição amigável correspondente
-        display_name = col.lottery_name
-        for k, v in LOTTERY_MAP.items():
-            if v["db_name"] == col.lottery_name:
-                display_name = v["display_name"]
-                break
+        display_name = get_display_name_by_db_name(col.lottery_name)
                 
         output.append({
             "id": col.id,
@@ -137,12 +118,7 @@ async def get_collection_detail(collection_id: int, db: Session = Depends(get_db
     if not col:
         raise HTTPException(status_code=404, detail="Coleção não encontrada.")
         
-    # Mapeamento de nome de exibição
-    display_name = col.lottery_name
-    for k, v in LOTTERY_MAP.items():
-        if v["db_name"] == col.lottery_name:
-            display_name = v["display_name"]
-            break
+    display_name = get_display_name_by_db_name(col.lottery_name)
             
     # Busca o último concurso real sorteado no banco para esta loteria
     last_real_draw = (

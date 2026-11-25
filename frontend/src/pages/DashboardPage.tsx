@@ -373,7 +373,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
                 <p className="text-xs text-gray-500 mt-2 mb-4">Distribuição do último dígito dos números sorteados.</p>
                 {stats.terminators && stats.terminators.length > 0 ? (
                   <div className="space-y-3">
-                    {stats.terminators.map(([digit, count], index) => {
+                    {stats.terminators.map(([digit, count]) => {
                       const maxCount = Math.max(...stats.terminators!.map(t => t[1]), 1);
                       const widthPct = (count / maxCount) * 100;
                       return (

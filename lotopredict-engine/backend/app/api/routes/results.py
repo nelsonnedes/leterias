@@ -3,20 +3,14 @@ from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from app.database.models import LotteryResult
 from app.database.session import get_db
+from app.core.constants import get_lottery_spec
 from app.services.probability import ProbabilityAlgorithms
 
 router = APIRouter()
 
-LOTTERY_SPECS = {
-    "megasena": {"total_numbers": 60, "numbers_to_draw": 6, "db_name": "Megasena", "display_name": "Mega-Sena"},
-    "lotofacil": {"total_numbers": 25, "numbers_to_draw": 15, "db_name": "Lotofacil", "display_name": "Lotofácil"},
-    "quina": {"total_numbers": 80, "numbers_to_draw": 5, "db_name": "Quina", "display_name": "Quina"},
-}
-
 
 def _get_lottery_spec(lottery_name: str) -> dict:
-    name = lottery_name.lower().replace("-", "").replace(" ", "")
-    return LOTTERY_SPECS.get(name, LOTTERY_SPECS["megasena"])
+    return get_lottery_spec(lottery_name, strict=False)
 
 
 @router.get("/lottery/results", response_model=List[dict])

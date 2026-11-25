@@ -74,7 +74,8 @@ export const BacktestPage: React.FC = () => {
                 onChange={(e) => setStrategy(e.target.value)}
                 className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all duration-300"
               >
-                <option value="combined">Híbrida (Quentes + Atrasadas)</option>
+                <option value="ml_ensemble">IA Ensemble (ML 8 Features + Markov + Ciclos)</option>
+                <option value="combined">Híbrida (Frequência + Atraso + Tendência + Pares)</option>
                 <option value="frequency">Apenas Frequência (Mais sorteadas)</option>
                 <option value="delay">Apenas Atraso (Mais atrasadas)</option>
               </select>

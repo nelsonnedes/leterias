@@ -1,7 +1,7 @@
 // =============================================================================
 // LotoPredict Engine — Motor Preditivo Offline (TypeScript)
-// Espelho fiel do backend Python: probability.py + prediction_service.py
-// Versão: 2.0 — Filtros completos (Paridade, Soma, Consecutivos, Quadrantes, Jogos Estúpidos)
+// Espelho fiel do backend Python: probability.py + ml_predictor.py
+// Versão: 2.1 — Filtros completos + ML Ensemble (8 features, LR L2 + Ridge)
 // =============================================================================
 
 export interface Draw {
@@ -353,6 +353,324 @@ export const getMockStats = (lottery: string, limit?: number) => {
 };
 
 // ---------------------------------------------------------------------------
+// ML ENSEMBLE OFFLINE — espelho de app/services/ml_predictor.py (Python)
+// 8 features por dezena + ensemble Regressão Logística L2 + Ridge (NumPy -> TS)
+// ---------------------------------------------------------------------------
+
+const ML_FEATURES = 8;
+
+type Matrix = number[][];
+
+function sigmoid(z: number): number {
+  return 1 / (1 + Math.exp(-z));
+}
+
+function normalizeScores(values: number[]): number[] {
+  const min = Math.min(...values);
+  const max = Math.max(...values);
+  const span = (max - min) || 1;
+  return values.map(v => (v - min) / span);
+}
+
+/**
+ * Extrai matriz (maxNumber x 8) de features para o estado atual do histórico.
+ * Espera `historyWindow` em ordem cronológica (mais antigo -> mais recente).
+ * Features: freq global, freq recente, momentum, atraso, razão do atraso,
+ * faltante no ciclo, transição de Markov e coocorrência com o último sorteio.
+ */
+export function extractStepFeatures(historyWindow: number[][], totalNumbers: number): Matrix {
+  const nDraws = historyWindow.length;
+  const feats: Matrix = Array.from({ length: totalNumbers }, () => new Array<number>(ML_FEATURES).fill(0));
+  if (nDraws === 0) return feats;
+
+  const countsAll = new Float64Array(totalNumbers);
+  const countsRecent = new Float64Array(totalNumbers);
+  const lastSeen = new Int32Array(totalNumbers).fill(-1);
+  const gapSum = new Float64Array(totalNumbers);
+  const gapCnt = new Float64Array(totalNumbers);
+  const cooccur: Float64Array[] = Array.from({ length: totalNumbers }, () => new Float64Array(totalNumbers));
+  const markov: Float64Array[] = Array.from({ length: totalNumbers }, () => new Float64Array(totalNumbers));
+
+  const recentStart = Math.max(0, nDraws - 25);
+  const cycleSeen = new Set<number>();
+  let prevDraw: number[] = [];
+
+  for (let idx = 0; idx < nDraws; idx++) {
+    const validDraw = historyWindow[idx]
+      .filter(n => n >= 1 && n <= totalNumbers)
+      .map(n => n - 1);
+
+    for (const numIdx of validDraw) {
+      countsAll[numIdx] += 1;
+      if (idx >= recentStart) countsRecent[numIdx] += 1;
+      if (lastSeen[numIdx] >= 0) {
+        gapSum[numIdx] += idx - lastSeen[numIdx];
+        gapCnt[numIdx] += 1;
+      }
+      lastSeen[numIdx] = idx;
+      cycleSeen.add(numIdx);
+    }
+
+    if (cycleSeen.size >= totalNumbers) cycleSeen.clear();
+
+    for (let i = 0; i < validDraw.length; i++) {
+      for (let j = i + 1; j < validDraw.length; j++) {
+        cooccur[validDraw[i]][validDraw[j]] += 1;
+        cooccur[validDraw[j]][validDraw[i]] += 1;
+      }
+    }
+
+    if (prevDraw.length > 0) {
+      for (const p of prevDraw) {
+        for (const c of validDraw) markov[p][c] += 1;
+      }
+    }
+    prevDraw = validDraw;
+  }
+
+  // 0: frequência global normalizada
+  let maxAll = 0;
+  for (let i = 0; i < totalNumbers; i++) maxAll = Math.max(maxAll, countsAll[i]);
+  const globalMax = maxAll || 1;
+
+  // 1: frequência recente normalizada
+  let maxRec = 0;
+  for (let i = 0; i < totalNumbers; i++) maxRec = Math.max(maxRec, countsRecent[i]);
+  const recentMax = maxRec || 1;
+
+  // 2: momentum (recente - global) normalizado para [0, 1]
+  let totalAllSum = 0;
+  let totalRecSum = 0;
+  for (let i = 0; i < totalNumbers; i++) {
+    totalAllSum += countsAll[i];
+    totalRecSum += countsRecent[i];
+  }
+  totalAllSum = totalAllSum || 1;
+  totalRecSum = totalRecSum || 1;
+
+  const momRaw = new Float64Array(totalNumbers);
+  let minMom = Infinity;
+  let maxMom = -Infinity;
+  for (let i = 0; i < totalNumbers; i++) {
+    const mom = countsRecent[i] / totalRecSum - countsAll[i] / totalAllSum;
+    momRaw[i] = mom;
+    minMom = Math.min(minMom, mom);
+    maxMom = Math.max(maxMom, mom);
+  }
+  const momSpan = (maxMom - minMom) || 1;
+
+  // 3: atraso atual normalizado
+  const delays = new Float64Array(totalNumbers);
+  let maxDelay = 0;
+  for (let i = 0; i < totalNumbers; i++) {
+    delays[i] = lastSeen[i] >= 0 ? (nDraws - 1) - lastSeen[i] : nDraws;
+    maxDelay = Math.max(maxDelay, delays[i]);
+  }
+  const delayMax = maxDelay || 1;
+
+  // 4: razão atraso atual / atraso médio histórico
+  const delayRatio = new Float64Array(totalNumbers);
+  for (let i = 0; i < totalNumbers; i++) {
+    let avgGap = gapCnt[i] > 0 ? gapSum[i] / gapCnt[i] : delayMax / 2;
+    avgGap = Math.max(avgGap, 1);
+    delayRatio[i] = Math.min(Math.max(delays[i] / avgGap, 0), 3) / 3;
+  }
+
+  // 6 & 7: Markov e coocorrência a partir do último sorteio
+  const lastDrawIdx = historyWindow[nDraws - 1]
+    .filter(n => n >= 1 && n <= totalNumbers)
+    .map(n => n - 1);
+
+  const markovVec = new Float64Array(totalNumbers);
+  const cooccurVec = new Float64Array(totalNumbers);
+  if (lastDrawIdx.length > 0) {
+    for (const src of lastDrawIdx) {
+      for (let i = 0; i < totalNumbers; i++) {
+        markovVec[i] += markov[src][i] / lastDrawIdx.length;
+        cooccurVec[i] += cooccur[src][i] / lastDrawIdx.length;
+      }
+    }
+  }
+  let maxMarkov = 0;
+  let maxCooccur = 0;
+  for (let i = 0; i < totalNumbers; i++) {
+    maxMarkov = Math.max(maxMarkov, markovVec[i]);
+    maxCooccur = Math.max(maxCooccur, cooccurVec[i]);
+  }
+  const markovMax = maxMarkov || 1;
+  const cooccurMax = maxCooccur || 1;
+
+  for (let i = 0; i < totalNumbers; i++) {
+    feats[i][0] = countsAll[i] / globalMax;
+    feats[i][1] = countsRecent[i] / recentMax;
+    feats[i][2] = (momRaw[i] - minMom) / momSpan;
+    feats[i][3] = delays[i] / delayMax;
+    feats[i][4] = delayRatio[i];
+    feats[i][5] = cycleSeen.has(i) ? 0 : 1;
+    feats[i][6] = markovVec[i] / markovMax;
+    feats[i][7] = cooccurVec[i] / cooccurMax;
+  }
+
+  return feats;
+}
+
+/** Regressão Logística com regularização L2 via gradiente descendente. */
+function fitLogisticL2(X: Matrix, y: number[], lr = 0.15, reg = 0.01, epochs = 80): { w: number[]; b: number } {
+  const nSamples = X.length;
+  const nFeatures = X[0]?.length ?? 0;
+  const w = new Array<number>(nFeatures).fill(0);
+  let b = 0;
+
+  for (let epoch = 0; epoch < epochs; epoch++) {
+    const gradW = new Array<number>(nFeatures).fill(0);
+    let gradB = 0;
+
+    for (let i = 0; i < nSamples; i++) {
+      let z = b;
+      for (let j = 0; j < nFeatures; j++) z += X[i][j] * w[j];
+      z = Math.max(-20, Math.min(20, z));
+      const err = sigmoid(z) - y[i];
+      for (let j = 0; j < nFeatures; j++) gradW[j] += err * X[i][j];
+      gradB += err;
+    }
+
+    for (let j = 0; j < nFeatures; j++) w[j] -= lr * (gradW[j] / nSamples + reg * w[j]);
+    b -= lr * (gradB / nSamples);
+  }
+
+  return { w, b };
+}
+
+/** Resolve A·x = b por eliminação de Gauss com pivoteamento parcial. */
+function solveLinearSystem(A: Matrix, b: number[]): number[] | null {
+  const n = A.length;
+  const M = A.map((row, i) => [...row, b[i]]);
+
+  for (let col = 0; col < n; col++) {
+    let pivot = col;
+    for (let r = col + 1; r < n; r++) {
+      if (Math.abs(M[r][col]) > Math.abs(M[pivot][col])) pivot = r;
+    }
+    if (Math.abs(M[pivot][col]) < 1e-12) return null;
+    [M[col], M[pivot]] = [M[pivot], M[col]];
+
+    const pv = M[col][col];
+    for (let j = col; j <= n; j++) M[col][j] /= pv;
+
+    for (let r = 0; r < n; r++) {
+      if (r === col) continue;
+      const factor = M[r][col];
+      if (factor === 0) continue;
+      for (let j = col; j <= n; j++) M[r][j] -= factor * M[col][j];
+    }
+  }
+
+  return M.map(row => row[n]);
+}
+
+/** Ridge Regression em forma fechada (solução exata) com intercepto. */
+function fitRidge(X: Matrix, y: number[], alpha = 1): { w: number[]; b: number } {
+  const nSamples = X.length;
+  const nFeatures = X[0]?.length ?? 0;
+  const meanX = new Array<number>(nFeatures).fill(0);
+  let meanY = 0;
+
+  for (const row of X) {
+    for (let j = 0; j < nFeatures; j++) meanX[j] += row[j] / nSamples;
+  }
+  for (const v of y) meanY += v / nSamples;
+
+  const gram: Matrix = Array.from({ length: nFeatures }, () => new Array<number>(nFeatures).fill(0));
+  const rhs = new Array<number>(nFeatures).fill(0);
+
+  for (let i = 0; i < nSamples; i++) {
+    const yc = y[i] - meanY;
+    for (let a = 0; a < nFeatures; a++) {
+      const xa = X[i][a] - meanX[a];
+      rhs[a] += xa * yc;
+      for (let bIdx = 0; bIdx < nFeatures; bIdx++) {
+        gram[a][bIdx] += xa * (X[i][bIdx] - meanX[bIdx]);
+      }
+    }
+  }
+
+  for (let j = 0; j < nFeatures; j++) gram[j][j] += alpha;
+
+  const w = solveLinearSystem(gram, rhs) ?? new Array<number>(nFeatures).fill(0);
+  let b = meanY;
+  for (let j = 0; j < nFeatures; j++) b -= meanX[j] * w[j];
+
+  return { w, b };
+}
+
+/**
+ * Treina o Ensemble (Regressão Logística L2 + Ridge) nas últimas `trainWindow`
+ * transições e retorna o score preditivo normalizado [0, 1] por dezena (índice 0 = dezena 1).
+ */
+export function predictMlScores(numbersHistory: number[][], totalNumbers: number, trainWindow = 60): number[] {
+  const nDraws = numbersHistory.length;
+  if (nDraws === 0) return new Array<number>(totalNumbers).fill(0.5);
+
+  if (nDraws < 30) {
+    const feats = extractStepFeatures(numbersHistory, totalNumbers);
+    const raw = feats.map(row => row.reduce((s, v) => s + v, 0) / ML_FEATURES);
+    return normalizeScores(raw);
+  }
+
+  // Dataset supervisionado walk-forward (espelho do Python)
+  const startStep = Math.max(25, nDraws - trainWindow);
+  const stepStride = nDraws - startStep > 30 ? 3 : 1;
+  const X: Matrix = [];
+  const y: number[] = [];
+
+  for (let t = startStep; t < nDraws; t += stepStride) {
+    const lookbackStart = Math.max(0, t - 250);
+    const feats = extractStepFeatures(numbersHistory.slice(lookbackStart, t), totalNumbers);
+    const target = new Set(numbersHistory[t]);
+    for (let i = 0; i < totalNumbers; i++) {
+      X.push(feats[i]);
+      y.push(target.has(i + 1) ? 1 : 0);
+    }
+  }
+
+  // Padronização z-score
+  const mean = new Array<number>(ML_FEATURES).fill(0);
+  for (const row of X) {
+    for (let j = 0; j < ML_FEATURES; j++) mean[j] += row[j] / X.length;
+  }
+  const std = new Array<number>(ML_FEATURES).fill(0);
+  for (const row of X) {
+    for (let j = 0; j < ML_FEATURES; j++) std[j] += (row[j] - mean[j]) ** 2;
+  }
+  for (let j = 0; j < ML_FEATURES; j++) {
+    std[j] = Math.sqrt(std[j] / X.length);
+    if (std[j] < 1e-6) std[j] = 1;
+  }
+
+  const XNorm = X.map(row => row.map((v, j) => (v - mean[j]) / std[j]));
+
+  const { w: wLog, b: bLog } = fitLogisticL2(XNorm, y);
+  const { w: wRid, b: bRid } = fitRidge(XNorm, y, 5);
+
+  // Inferência para o próximo concurso com janela recente de até 300 sorteios
+  const featsNow = extractStepFeatures(numbersHistory.slice(-300), totalNumbers);
+  const combined = featsNow.map(row => {
+    let zLog = bLog;
+    let pRid = bRid;
+    for (let j = 0; j < ML_FEATURES; j++) {
+      const xNow = (row[j] - mean[j]) / std[j];
+      zLog += xNow * wLog[j];
+      pRid += xNow * wRid[j];
+    }
+    const pLog = sigmoid(Math.max(-20, Math.min(20, zLog)));
+    const pHeur = row.reduce((s, v) => s + v, 0) / ML_FEATURES;
+    return 0.45 * pLog + 0.35 * pRid + 0.20 * pHeur;
+  });
+
+  return normalizeScores(combined);
+}
+
+// ---------------------------------------------------------------------------
 // GERADOR PREDITIVO OFFLINE — Motor com Filtros Completos
 // Espelho do ProbabilityAlgorithms.generate_prediction() do Python
 // ---------------------------------------------------------------------------
@@ -368,18 +686,42 @@ export const generateMockGames = (lottery: string, numGames: number, strategy: s
   const maxFreq = Math.max(...Object.values(freq), 1);
   const maxDelay = Math.max(...Object.values(delay), 1);
 
+  // Momentum: janela recente (25 concursos mais novos) vs histórico total
+  const totalNumbersDrawn = draws.reduce((s, d) => s + d.numbers.length, 0) || 1;
+  const recentDraws = draws.slice(0, Math.min(25, draws.length));
+  const recentTotal = recentDraws.reduce((s, d) => s + d.numbers.length, 0) || 1;
+  const recentFreq = computeFrequency(recentDraws, cfg.maxNumber);
+
+  let minMomentum = Infinity;
+  let maxMomentum = -Infinity;
+  const momentum: Record<number, number> = {};
+  for (let i = 1; i <= cfg.maxNumber; i++) {
+    const mom = recentFreq[i] / recentTotal - freq[i] / totalNumbersDrawn;
+    momentum[i] = mom;
+    minMomentum = Math.min(minMomentum, mom);
+    maxMomentum = Math.max(maxMomentum, mom);
+  }
+  const momentumSpan = (maxMomentum - minMomentum) || 1;
+
+  // Scores do ML Ensemble (histórico em ordem cronológica: mais antigo -> mais novo)
+  const mlScores = strategy === 'ml_ensemble'
+    ? predictMlScores([...draws].reverse().map(d => d.numbers), cfg.maxNumber)
+    : null;
+
   const scores: Record<number, number> = {};
   for (let i = 1; i <= cfg.maxNumber; i++) {
     const fNorm = freq[i] / maxFreq;
     const dNorm = delay[i] / maxDelay;
+    const mNorm = (momentum[i] - minMomentum) / momentumSpan;
 
     if (strategy === 'frequency') {
-      scores[i] = fNorm;
+      scores[i] = 0.75 * fNorm + 0.25 * mNorm;
     } else if (strategy === 'delay') {
-      scores[i] = dNorm;
+      scores[i] = 0.75 * dNorm + 0.25 * mNorm;
     } else {
-      // Híbrida: 60% frequência + 40% atraso (mesmo peso do backend Python)
-      scores[i] = (fNorm * 0.6) + (dNorm * 0.4);
+      // Híbrida (combined) / base do ML Ensemble — mesmo blend do backend Python
+      const base = 0.45 * fNorm + 0.30 * dNorm + 0.25 * mNorm;
+      scores[i] = mlScores ? 0.75 * mlScores[i - 1] + 0.25 * base : base;
     }
   }
 

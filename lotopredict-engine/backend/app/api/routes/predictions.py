@@ -4,36 +4,18 @@ from typing import List, Dict, Any
 from pydantic import BaseModel, Field
 from app.database.models import LotteryResult
 from app.database.session import get_db
+from app.core.constants import get_lottery_spec
 from app.services.probability import ProbabilityAlgorithms
 from app.services.closing_engine import ClosingEngine
 
 router = APIRouter()
-
-# Definições estáticas das loterias
-LOTTERY_SPECS = {
-    "megasena": {"total_numbers": 60, "numbers_to_draw": 6, "db_name": "Megasena", "display_name": "Mega-Sena"},
-    "mega-sena": {"total_numbers": 60, "numbers_to_draw": 6, "db_name": "Megasena", "display_name": "Mega-Sena"},
-    "lotofacil": {"total_numbers": 25, "numbers_to_draw": 15, "db_name": "Lotofacil", "display_name": "Lotofácil"},
-    "lotofácil": {"total_numbers": 25, "numbers_to_draw": 15, "db_name": "Lotofacil", "display_name": "Lotofácil"},
-    "quina": {"total_numbers": 80, "numbers_to_draw": 5, "db_name": "Quina", "display_name": "Quina"},
-}
-
-def get_lottery_spec(lottery_name: str):
-    name = lottery_name.lower()
-    spec = LOTTERY_SPECS.get(name)
-    if not spec:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Loteria '{lottery_name}' não suportada. Escolha entre: Mega-Sena, Lotofácil ou Quina."
-        )
-    return spec
 
 @router.get("/lottery/{lottery_name}/predict", response_model=Dict[str, Any])
 @router.post("/lottery/{lottery_name}/predict", response_model=Dict[str, Any])
 async def get_predictions(
     lottery_name: str,
     num_games: int = Query(default=1, ge=1, le=50, description="Quantidade de jogos a serem gerados"),
-    strategy: str = Query(default="combined", description="Estratégia preditiva: combined, frequency ou delay"),
+    strategy: str = Query(default="combined", description="Estratégia preditiva: combined, frequency, delay ou ml_ensemble"),
     db: Session = Depends(get_db)
 ):
     """
@@ -79,7 +61,7 @@ async def run_backtest(
     lottery_name: str,
     num_draws: int = Query(default=100, ge=5, le=500, description="Quantidade de concursos históricos para o teste"),
     num_games_per_draw: int = Query(default=5, ge=1, le=50, description="Quantidade de jogos simulados por concurso"),
-    strategy: str = Query(default="combined", description="Estratégia estatística: combined, frequency ou delay"),
+    strategy: str = Query(default="combined", description="Estratégia estatística: combined, frequency, delay ou ml_ensemble"),
     db: Session = Depends(get_db)
 ):
     """

@@ -227,6 +227,71 @@ async def load_historical_data(force_lotteries: list[str] | None = None):
         print("\n=== [OK] Carga Historica Finalizada com Sucesso ===")
 
 
+# Fonte secundária open-source (GitHub guilhermeasn/loteria.json)
+LOTERIA_JSON_URLS = {
+    "megasena": "https://raw.githubusercontent.com/guilhermeasn/loteria.json/master/data/megasena.json",
+    "lotofacil": "https://raw.githubusercontent.com/guilhermeasn/loteria.json/master/data/lotofacil.json",
+    "quina": "https://raw.githubusercontent.com/guilhermeasn/loteria.json/master/data/quina.json",
+}
+
+
+async def fill_gaps_from_loteria_json(force_lotteries: list[str] | None = None):
+    """
+    Preenche lacunas (gaps) no banco local usando o dataset consolidado do repositório
+    open-source `guilhermeasn/loteria.json` (atualizado diariamente via GitHub Actions).
+    """
+    print("=== LotoPredict Engine - Preenchimento de Gaps via loteria.json ===")
+    targets = {k: v for k, v in LOTTERIES.items() if not force_lotteries or k in force_lotteries}
+    session = SessionLocal()
+
+    async with httpx.AsyncClient(verify=False) as client:
+        for key, spec in targets.items():
+            url = LOTERIA_JSON_URLS.get(key)
+            if not url:
+                continue
+            db_name = spec["db_name"]
+            try:
+                res = await client.get(url, headers=HEADERS, timeout=30.0)
+                if res.status_code != 200:
+                    print(f"[{db_name}] Falha ao baixar loteria.json (HTTP {res.status_code}).")
+                    continue
+
+                payload = res.json()
+                inserted = 0
+                for concurso_str, draw_info in payload.items():
+                    if not isinstance(draw_info, dict):
+                        continue
+                    raw_nums = draw_info.get("dezenas") or draw_info.get("numeros") or []
+                    numbers = sorted([int(n) for n in raw_nums if str(n).isdigit()])
+                    date_str = draw_info.get("data") or draw_info.get("dataApuracao")
+                    if not numbers or not date_str:
+                        continue
+                    try:
+                        draw_date = datetime.strptime(date_str, "%d/%m/%Y").date()
+                    except ValueError:
+                        try:
+                            draw_date = datetime.strptime(date_str[:10], "%Y-%m-%d").date()
+                        except ValueError:
+                            continue
+
+                    draw_data = {
+                        "lottery_name": db_name,
+                        "concurso": int(concurso_str) if str(concurso_str).isdigit() else 0,
+                        "draw_date": draw_date,
+                        "numbers": numbers,
+                        "source_url": url,
+                        "source_reference": f"Concurso {concurso_str}",
+                    }
+                    if upsert_draw(session, draw_data):
+                        inserted += 1
+
+                print(f"[{db_name}] Gaps preenchidos via loteria.json: +{inserted} registros.")
+            except Exception as e:
+                print(f"[{db_name}] Erro ao processar loteria.json: {e}")
+
+    session.close()
+
+
 if __name__ == "__main__":
     import urllib3
     urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
@@ -240,6 +305,15 @@ if __name__ == "__main__":
         default=None,
         help="Restringir a loteria(s) a processar (padrão: todas)"
     )
+    parser.add_argument(
+        "--source", "-s",
+        choices=["caixa", "loteria-json"],
+        default="caixa",
+        help="Fonte de dados: 'caixa' (API oficial) ou 'loteria-json' (dataset GitHub)"
+    )
     args = parser.parse_args()
 
-    asyncio.run(load_historical_data(force_lotteries=args.lottery))
+    if args.source == "loteria-json":
+        asyncio.run(fill_gaps_from_loteria_json(force_lotteries=args.lottery))
+    else:
+        asyncio.run(load_historical_data(force_lotteries=args.lottery))

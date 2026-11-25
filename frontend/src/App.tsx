@@ -83,23 +83,11 @@ function App() {
     setIsAppInstalled(isStandalone);
   }, []);
 
-  // Contador de visitas via CountAPI
+  // Contador de visitas local (substitui CountAPI descontinuado; métricas globais via Vercel Analytics)
   useEffect(() => {
-    const key = 'lotopredict-engine';
-    const ns = 'nelsonbrito';
-    
-    // Incrementa e obtém o contador
-    fetch(`https://api.countapi.xyz/hit/${ns}/${key}`)
-      .then(res => res.json())
-      .then(data => {
-        if (data && data.value) setVisitCount(data.value);
-      })
-      .catch(() => {
-        // Fallback silencioso: conta localmente
-        const localCount = parseInt(localStorage.getItem('lotopredict_visits') || '0') + 1;
-        localStorage.setItem('lotopredict_visits', String(localCount));
-        setVisitCount(localCount);
-      });
+    const localCount = parseInt(localStorage.getItem('lotopredict_visits') || '0', 10) + 1;
+    localStorage.setItem('lotopredict_visits', String(localCount));
+    setVisitCount(localCount);
   }, []);
 
   // Intercepta o evento beforeinstallprompt (Chrome/Android/Samsung)

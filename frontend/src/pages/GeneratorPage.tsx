@@ -116,7 +116,8 @@ export const GeneratorPage: React.FC<GeneratorPageProps> = ({ initialLottery = '
                 onChange={(e) => setStrategy(e.target.value)}
                 className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all duration-300"
               >
-                <option value="combined">Híbrida (Frequência 60% + Atraso 40%) [Recomendado]</option>
+                <option value="ml_ensemble">IA Ensemble (ML 8 Features + Markov + Ciclos) [Novo]</option>
+                <option value="combined">Híbrida (Frequência + Atraso + Tendência + Pares)</option>
                 <option value="frequency">Baseada em Frequência (Números Quentes)</option>
                 <option value="delay">Baseada em Atraso (Números Frios/Tendência)</option>
               </select>
