@@ -16,6 +16,9 @@ export const BacktestPage: React.FC = () => {
   const [selectedGames, setSelectedGames] = useState<number[]>([]);
   const [collectionName, setCollectionName] = useState<string>('');
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
+  const [minHits, setMinHits] = useState<number>(0);
+  const [targetHits, setTargetHits] = useState<number>(0);
+  const [targetRunning, setTargetRunning] = useState<boolean>(false);
 
   // Estados de resposta
   const [backtestResult, setBacktestResult] = useState<BacktestResponse | null>(null);
@@ -27,14 +30,16 @@ export const BacktestPage: React.FC = () => {
     setError(null);
     setSavedMessage(null);
     setSelectedGames([]);
+    if (targetHits > 0) setTargetRunning(true);
     try {
-      const data = await api.runBacktest(lottery, numDraws, numGamesPerDraw, strategy, fromStart);
+      const data = await api.runBacktest(lottery, numDraws, numGamesPerDraw, strategy, fromStart, targetHits);
       setBacktestResult(data);
     } catch (err: any) {
       setError('Erro ao rodar simulação histórica. Certifique-se de que o backend possui histórico de concursos populado.');
       console.error(err);
     } finally {
       setLoading(false);
+      setTargetRunning(false);
     }
   };
 
@@ -145,6 +150,21 @@ export const BacktestPage: React.FC = () => {
               <span className="text-sm font-semibold text-gray-300">Simular desde o concurso mais antigo</span>
             </label>
 
+            <div className="space-y-2">
+              <label className="text-sm font-semibold text-gray-300">Meta de acertos (opcional)</label>
+              <select
+                value={targetHits}
+                onChange={(e) => setTargetHits(parseInt(e.target.value, 10))}
+                className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500"
+              >
+                <option value={0}>Desativada</option>
+                {Array.from({ length: lottery === 'lotofacil' ? 15 : lottery === 'quina' ? 5 : 6 }, (_, i) => (
+                  <option key={i + 1} value={i + 1}>{i + 1} acertos ou mais</option>
+                ))}
+              </select>
+              <p className="text-xs text-gray-500">O motor continuará gerando jogos até atingir a meta (limite de 500 tentativas).</p>
+            </div>
+
             <button
               onClick={handleRunBacktest}
               disabled={loading}
@@ -155,7 +175,13 @@ export const BacktestPage: React.FC = () => {
               ) : (
                 <Play className="w-5 h-5 fill-current" />
               )}
-              <span>{loading ? 'Simulando no Passado...' : 'Iniciar Backtest'}</span>
+              <span>
+                {targetRunning
+                  ? 'Buscando jogos para a meta...'
+                  : loading
+                    ? 'Simulando no Passado...'
+                    : 'Iniciar Backtest'}
+              </span>
             </button>
           </div>
         </div>
@@ -165,6 +191,18 @@ export const BacktestPage: React.FC = () => {
           {error && (
             <div className="p-4 bg-red-950/20 border border-red-900/30 text-red-400 rounded-xl text-center text-sm font-medium">
               {error}
+            </div>
+          )}
+
+          {backtestResult && (backtestResult.target_hits ?? 0) > 0 && (
+            <div className={`p-4 rounded-xl text-sm font-semibold border ${
+              backtestResult.target_reached
+                ? 'bg-green-950/20 border-green-900/30 text-green-400'
+                : 'bg-yellow-950/20 border-yellow-900/30 text-yellow-400'
+            }`}>
+              Meta de {backtestResult.target_hits} acertos: {backtestResult.target_reached
+                ? `atingida em ${backtestResult.target_games?.length ?? 0} jogo(s).`
+                : 'não atingida dentro do limite de tentativas. Ajuste a meta ou a estratégia.'}
             </div>
           )}
 
@@ -237,10 +275,25 @@ export const BacktestPage: React.FC = () => {
                     <h4 className="text-lg font-bold text-white flex items-center gap-2">
                       <Award className="w-5 h-5 text-green-400" /> Jogos Mais Pontuados
                     </h4>
-                    <span className="text-xs font-semibold text-blue-400">
-                      {selectedGames.length} selecionado(s)
-                    </span>
+                    <div className="flex items-center gap-2">
+                      <label className="text-xs text-gray-400">Mín. acertos:</label>
+                      <select
+                        value={minHits}
+                        onChange={(e) => setMinHits(parseInt(e.target.value, 10))}
+                        className="bg-dark-bg border border-dark-border rounded-lg px-2 py-1 text-xs text-white"
+                      >
+                        {Array.from({ length: (lottery === 'lotofacil' ? 15 : lottery === 'quina' ? 5 : 6) + 1 }, (_, i) => (
+                          <option key={i} value={i}>{i}+</option>
+                        ))}
+                      </select>
+                      <span className="text-xs font-semibold text-blue-400">{selectedGames.length} selecionado(s)</span>
+                    </div>
                   </div>
+
+                  <p className="text-xs text-gray-500 mt-2">
+                    "N acertos" = quantidade exata de dezenas coincidentes. Números em{' '}
+                    <span className="text-green-400 font-bold">verde</span> foram acertados.
+                  </p>
 
                   <form onSubmit={handleSaveSelected} className="mt-4 flex flex-col md:flex-row gap-2">
                     <input
@@ -267,7 +320,9 @@ export const BacktestPage: React.FC = () => {
 
                   <div className="mt-4 max-h-80 overflow-y-auto pr-1 space-y-1.5">
                     {backtestResult.top_games.slice(0, 30).map((item, idx) => {
+                      if (item.hits < minHits) return null;
                       const selected = selectedGames.includes(idx);
+                      const isHit = (n: number) => item.hit_numbers?.includes(n) ?? false;
                       return (
                         <label
                           key={`${item.concurso}-${idx}`}
@@ -290,7 +345,15 @@ export const BacktestPage: React.FC = () => {
                           <span className="font-bold text-gray-400 w-24">Concurso {item.concurso}</span>
                           <span className="flex flex-wrap gap-1 flex-1">
                             {item.game.map((n) => (
-                              <span key={n} className="px-1.5 py-0.5 bg-dark-card border border-dark-border rounded font-bold text-gray-300">
+                              <span
+                                key={n}
+                                title={isHit(n) ? 'Acertado' : undefined}
+                                className={`px-1.5 py-0.5 rounded font-bold ${
+                                  isHit(n)
+                                    ? 'bg-green-500/30 border border-green-400 text-green-200'
+                                    : 'bg-dark-card border border-dark-border text-gray-300'
+                                }`}
+                              >
                                 {String(n).padStart(2, '0')}
                               </span>
                             ))}

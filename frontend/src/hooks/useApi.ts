@@ -81,7 +81,16 @@ export interface BacktestResponse {
     game: number[];
     hits: number;
     concurso: number;
+    hit_numbers?: number[];
   }[];
+  target_hits?: number;
+  target_games?: {
+    game: number[];
+    hits: number;
+    concurso: number;
+    hit_numbers?: number[];
+  }[];
+  target_reached?: boolean;
   from_start?: boolean;
   simulations_detail: {
     reference: string;
@@ -211,11 +220,12 @@ export const useApi = () => {
     numDraws: number = 100,
     numGamesPerDraw: number = 5,
     strategy: string = 'combined',
-    fromStart: boolean = false
+    fromStart: boolean = false,
+    targetHits: number = 0
   ): Promise<BacktestResponse> => {
     try {
       const res = await api.post(`/lottery/${lotteryName}/backtest`, null, {
-        params: { num_draws: numDraws, num_games_per_draw: numGamesPerDraw, strategy, from_start: fromStart }
+        params: { num_draws: numDraws, num_games_per_draw: numGamesPerDraw, strategy, from_start: fromStart, target_hits: targetHits }
       });
       return res.data;
     } catch (err: any) {
@@ -273,16 +283,35 @@ export const useApi = () => {
           max_hits: detail.max_hits_achieved,
         }));
 
-        const top_games = simulations_detail
-          .flatMap((detail) =>
+        const allOfflineGames = simulations_detail
+          .flatMap((detail, drawIdx) =>
             detail.games_simulated.map((g) => ({
               game: g.game,
               hits: g.hits,
               concurso: parseInt(detail.reference.replace('Concurso ', ''), 10) || 0,
+              hit_numbers: g.game.filter((n) => availableDraws[drawIdx].numbers.includes(n)),
             }))
-          )
-          .sort((a, b) => b.hits - a.hits)
-          .slice(0, 50);
+          );
+        const top_games = [...allOfflineGames].sort((a, b) => b.hits - a.hits).slice(0, 50);
+
+        let target_games = allOfflineGames.filter((g) => g.hits >= targetHits && targetHits > 0);
+        let targetAttempts = 0;
+        while (targetHits > 0 && target_games.length === 0 && targetAttempts < 200) {
+          const refDraw = availableDraws[targetAttempts % Math.max(availableDraws.length, 1)];
+          if (!refDraw) break;
+          for (const game of generateMockGames(lotteryName, numGamesPerDraw, strategy)) {
+            const hit_numbers = game.filter((n) => refDraw.numbers.includes(n));
+            const item = {
+              game,
+              hits: hit_numbers.length,
+              concurso: refDraw.concurso,
+              hit_numbers,
+            };
+            allOfflineGames.push(item);
+            if (hit_numbers.length >= targetHits) target_games.push(item);
+          }
+          targetAttempts += 1;
+        }
 
         return {
           lottery: lotteryName.toUpperCase(),
@@ -292,7 +321,10 @@ export const useApi = () => {
           hits_distribution,
           rewards_summary,
           hits_by_draw,
-          top_games,
+          top_games: [...top_games, ...target_games].sort((a, b) => b.hits - a.hits).slice(0, 50),
+          target_hits: targetHits,
+          target_games,
+          target_reached: target_games.length > 0,
           from_start: true,
           simulations_detail
         };

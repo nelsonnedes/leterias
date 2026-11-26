@@ -2,7 +2,7 @@ import re
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Tuple, Set
 from pydantic import BaseModel, Field
 from app.database.models import LotteryResult
 from app.database.session import get_db
@@ -65,6 +65,7 @@ async def run_backtest(
     num_games_per_draw: int = Query(default=5, ge=1, le=50, description="Quantidade de jogos simulados por concurso"),
     strategy: str = Query(default="combined", description="Estratégia estatística: combined, frequency, delay ou ml_ensemble"),
     from_start: bool = Query(default=False, description="Simular desde o concurso mais antigo do banco"),
+    target_hits: int = Query(default=0, ge=0, description="Meta de acertos: continua gerando jogos ate atingir (0 = desativado)"),
     db: Session = Depends(get_db)
 ):
     """
@@ -96,13 +97,54 @@ async def run_backtest(
     
     # Sorteios separados para o loop de backtest
     start_test_idx = 15 if from_start else total_db_draws - test_draws_count
+    if target_hits > 0:
+        start_test_idx = max(start_test_idx, 30)
+    test_draws_count = min(test_draws_count, total_db_draws - start_test_idx)
     
     hits_distribution = {}  # Contagem geral de acertos
     total_games_simulated = 0
     results_detail = []
     hits_by_draw = []  # Resumo compacto: concurso -> máximo de acertos
-    all_games_with_hits: List[Tuple[List[int], int, int]] = []
-    
+    all_games_with_hits: List[Tuple[List[int], int, int, List[int]]] = []
+    target_games: List[Dict[str, Any]] = []
+    target_attempts_used = 0
+    TARGET_MAX_ATTEMPTS = 500
+    TARGET_ATTEMPTS_PER_DRAW = 50
+
+    def _target_search(history: List[List[int]], target_set: Set[int], concurso_num: int) -> None:
+        """Gera lotes extras (com limite) ate aparecer jogo que atinja a meta de acertos."""
+        nonlocal target_attempts_used
+        if target_hits <= 0 or target_attempts_used >= TARGET_MAX_ATTEMPTS:
+            return
+        attempts_here = 0
+        while attempts_here < TARGET_ATTEMPTS_PER_DRAW and target_attempts_used < TARGET_MAX_ATTEMPTS:
+            attempts_here += 1
+            extra = ProbabilityAlgorithms.generate_prediction(
+                numbers_history=history,
+                total_numbers=spec["total_numbers"],
+                numbers_to_draw=spec["numbers_to_draw"],
+                strategy=strategy,
+                lottery_name=db_name,
+                num_games=num_games_per_draw,
+            )
+            target_attempts_used += 1
+            reached = False
+            for game in extra:
+                game_set = set(game)
+                hits = len(game_set & target_set)
+                hit_numbers = sorted(game_set & target_set)
+                all_games_with_hits.append((list(game), hits, concurso_num, hit_numbers))
+                if hits >= target_hits:
+                    target_games.append({
+                        "game": game,
+                        "hits": hits,
+                        "concurso": concurso_num,
+                        "hit_numbers": hit_numbers,
+                    })
+                    reached = True
+            if reached:
+                break
+
     # Loop de simulação
     for i in range(start_test_idx, start_test_idx + test_draws_count):
         # 1. Histórico de "treino" (sorteios anteriores ao sorteio de teste i)
@@ -135,7 +177,19 @@ async def run_backtest(
             # Atualiza distribuição de acertos
             hits_distribution[hits] = hits_distribution.get(hits, 0) + 1
             total_games_simulated += 1
-            all_games_with_hits.append((list(game), hits, concurso_num))
+            all_games_with_hits.append((list(game), hits, concurso_num, sorted(game_set & real_numbers_set)))
+
+        if target_hits > 0:
+            for game, hits in zip(predicted_games, draw_hits):
+                if hits >= target_hits:
+                    target_games.append({
+                        "game": game,
+                        "hits": hits,
+                        "concurso": concurso_num,
+                        "hit_numbers": sorted(set(game) & real_numbers_set),
+                    })
+            if not any(h >= target_hits for h in draw_hits):
+                _target_search(history, real_numbers_set, concurso_num)
 
         # Resumo compacto com apenas a quantidade de acertos por concurso
         hits_by_draw.append({
@@ -182,7 +236,7 @@ async def run_backtest(
     # Jogos mais pontuados (únicos) para o usuário selecionar e salvar
     seen_games = set()
     top_games = []
-    for game, hits, concurso_num in sorted(all_games_with_hits, key=lambda x: x[1], reverse=True):
+    for game, hits, concurso_num, hit_numbers in sorted(all_games_with_hits, key=lambda x: x[1], reverse=True):
         key = tuple(game)
         if key in seen_games:
             continue
@@ -191,6 +245,7 @@ async def run_backtest(
             "game": game,
             "hits": hits,
             "concurso": concurso_num,
+            "hit_numbers": hit_numbers,
         })
         if len(top_games) >= 50:
             break
@@ -204,6 +259,9 @@ async def run_backtest(
         "rewards_summary": reward_metrics,
         "hits_by_draw": hits_by_draw,
         "top_games": top_games,
+        "target_hits": target_hits,
+        "target_games": target_games,
+        "target_reached": bool(target_games),
         "from_start": from_start,
         "simulations_detail": results_detail[:15]  # Detalhes dos primeiros 15 concursos para manter o payload leve
     }
