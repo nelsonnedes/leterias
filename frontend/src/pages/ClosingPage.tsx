@@ -769,6 +769,7 @@ export const ClosingPage: React.FC = () => {
                 onRemove={removeAt}
                 onClear={() => { clear(); setGroupMessage(null); }}
                 onSaved={() => { clear(); setGroupMessage(null); }}
+                suggestedName={collectionName}
               />
             </div>
           )}

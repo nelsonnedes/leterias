@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApi } from '../hooks/useApi';
 import { Save, Trash2, CheckCircle2 } from 'lucide-react';
 
@@ -9,6 +9,7 @@ interface GameGroupPanelProps {
   onClear: () => void;
   onSaved?: () => void;
   note?: string;
+  suggestedName?: string;
 }
 
 export const GameGroupPanel: React.FC<GameGroupPanelProps> = ({
@@ -18,6 +19,7 @@ export const GameGroupPanel: React.FC<GameGroupPanelProps> = ({
   onClear,
   onSaved,
   note,
+  suggestedName,
 }) => {
   const api = useApi();
   const [name, setName] = useState('');
@@ -25,9 +27,20 @@ export const GameGroupPanel: React.FC<GameGroupPanelProps> = ({
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (suggestedName) setName(suggestedName);
+  }, [suggestedName]);
+
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name.trim() || games.length === 0) return;
+    if (games.length === 0) {
+      setError('Adicione jogos ao grupo antes de salvar.');
+      return;
+    }
+    if (!name.trim()) {
+      setError('Digite um nome para a coleção antes de salvar.');
+      return;
+    }
     setSaving(true);
     setError(null);
     setSaved(null);
@@ -95,12 +108,22 @@ export const GameGroupPanel: React.FC<GameGroupPanelProps> = ({
         />
         <button
           type="submit"
-          disabled={games.length === 0 || !name.trim() || saving}
-          className="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800/50 text-white font-bold rounded-xl text-sm flex items-center gap-2 cursor-pointer"
+          disabled={saving}
+          className="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800/50 text-white font-bold rounded-xl text-sm flex items-center justify-center gap-2 cursor-pointer"
         >
           <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar grupo em Minhas Coleções'}
         </button>
       </form>
+
+      <p role="status" className="text-[11px] text-gray-400">
+        {saving
+          ? 'Salvando jogos neste dispositivo...'
+          : games.length === 0
+            ? 'Grupo vazio: use “Adicionar jogos ao grupo” para incluir apostas antes de salvar.'
+            : !name.trim()
+              ? 'Digite um nome no campo acima para salvar o grupo.'
+              : `${games.length} jogo(s) prontos para salvar juntos em Minhas Coleções.`}
+      </p>
 
       {error && <p role="alert" className="text-xs text-red-400">{error}</p>}
       {saved && (
