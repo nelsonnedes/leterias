@@ -1,3 +1,4 @@
+import json
 from datetime import date, datetime
 
 import httpx
@@ -45,9 +46,19 @@ async def _fetch_latest_from_caixa(spec: dict) -> dict | None:
     endpoint = spec["db_name"].lower()
     url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{endpoint}"
     async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
-        response = await client.get(url, headers={"User-Agent": "LotoPredict/2.0"})
-        response.raise_for_status()
-        data = response.json()
+        try:
+            response = await client.get(url, headers={"User-Agent": "LotoPredict/2.0"})
+            response.raise_for_status()
+            data = response.json()
+        except Exception:
+            # A Caixa bloqueia IPs de datacenter: usa o leitor Jina como ponte.
+            bridge = await client.get(f"https://r.jina.ai/{url}")
+            bridge.raise_for_status()
+            text = bridge.text
+            start, end = text.find("{"), text.rfind("}")
+            if start < 0 or end <= start:
+                return None
+            data = json.loads(text[start:end + 1])
 
     raw_numbers = data.get("listaDezenas") or []
     numbers = sorted(int(n) for n in raw_numbers if str(n).isdigit())
