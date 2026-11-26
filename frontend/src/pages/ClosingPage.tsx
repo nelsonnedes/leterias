@@ -149,8 +149,14 @@ export const ClosingPage: React.FC = () => {
         );
       } else {
         const stats = await api.getStats(lottery, 300);
-        const hot = (stats.most_common_numbers ?? []).map(([n]) => n);
-        const cold = (stats.least_common_numbers ?? []).map(([n]) => n);
+        const frequencyEntries: [number, number][] = Object.entries(stats.all_frequencies ?? {})
+          .map(([n, count]) => [Number(n), Number(count)]);
+        const hot = frequencyEntries.length > 0
+          ? [...frequencyEntries].sort((a, b) => b[1] - a[1] || a[0] - b[0]).map(([n]) => n)
+          : (stats.most_common_numbers ?? []).map(([n]) => n);
+        const cold = frequencyEntries.length > 0
+          ? [...frequencyEntries].sort((a, b) => a[1] - b[1] || a[0] - b[0]).map(([n]) => n)
+          : (stats.least_common_numbers ?? []).map(([n]) => n);
         if (mode === 'hot') chosen = hot;
         else if (mode === 'cold') chosen = cold;
         else {
