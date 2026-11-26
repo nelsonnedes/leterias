@@ -269,7 +269,18 @@ export const CollectionsPage: React.FC = () => {
                       <span className="text-xs text-gray-500 font-normal">
                         ({new Date(selectedCol.last_real_draw.draw_date).toLocaleDateString('pt-BR')})
                       </span>
+                      {selectedCol.last_real_draw.source === 'caixa-live' && (
+                        <span className="px-2 py-0.5 bg-green-500/10 border border-green-500/20 text-green-300 rounded-lg text-[10px] font-bold">
+                          Ao vivo da Caixa
+                        </span>
+                      )}
                     </div>
+
+                    {selectedCol.last_real_draw.source === 'database' && (
+                      <div className="text-[11px] text-yellow-300 bg-yellow-500/10 border border-yellow-500/20 p-2 rounded-lg">
+                        ⚠️ A Caixa não respondeu: usando o último concurso do banco local, que pode estar desatualizado.
+                      </div>
+                    )}
                     
                     {/* Números Sorteados Reais */}
                     <div className="flex flex-wrap gap-2 pt-1">

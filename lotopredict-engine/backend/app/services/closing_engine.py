@@ -4,7 +4,7 @@ import math
 from collections import defaultdict
 from typing import List, Set, Dict, Any, Tuple, Sequence
 
-# Limite de relações de cobertura para evitar explosão combinatória no servidor
+# Acima deste número de relações, usamos o modo heurístico (amostragem) em vez do índice exato
 MAX_COVER_RELATIONS = 8_000_000
 
 
@@ -42,12 +42,6 @@ def _build_cover_index(
         if excluded < 0 or added < 0 or added > n - k:
             continue
         relations_per_bet += math.comb(k, excluded) * math.comb(n - k, added)
-    if relations_per_bet * len(bets) > MAX_COVER_RELATIONS:
-        raise ValueError(
-            "Combinação pesada demais para o fechamento neste servidor. "
-            "Reduza o número de dezenas ou a garantia."
-        )
-
     subset_index = {subset: idx for idx, subset in enumerate(subsets)}
     covered_by: List[List[int]] = [[] for _ in subsets]
     cover_masks: List[int] = []
@@ -130,6 +124,77 @@ def _greedy_cover(covered_by: List[List[int]], cover_masks: List[int]):
     return chosen, cumulative_coverage
 
 
+def _estimated_relations(n: int, k: int, c: int, g: int, num_bets: int) -> int:
+    """Estima quantas relações aposta⊂subset seriam enumeradas no modo exato."""
+    per_bet = 0
+    for common in range(g, min(k, c) + 1):
+        excluded = k - common
+        added = c - common
+        if excluded < 0 or added < 0 or added > n - k:
+            continue
+        per_bet += math.comb(k, excluded) * math.comb(n - k, added)
+    return per_bet * num_bets
+
+
+def _heavy_cover(
+    numbers: List[int],
+    game_size: int,
+    guarantee: int,
+    condition_hits: int,
+    seed: int = 0,
+):
+    """Cobertura heurística para combinações muito pesadas no modo exato.
+
+    Avalia candidatos contra uma amostra dos subsets descobertos e, a cada
+    escolha, remove todos os subsets que aquela aposta cobre. O resultado
+    continua sendo uma cobertura integral (100%) — apenas não é mínima.
+    """
+    n = len(numbers)
+    index = {number: idx for idx, number in enumerate(numbers)}
+    bets = list(itertools.combinations(range(n), game_size))
+    subsets = list(itertools.combinations(range(n), condition_hits))
+    # bets/subsets são tuplas de ÍNDICES (0..n-1), não valores de dezena
+    bet_masks = [sum(1 << i for i in bet) for bet in bets]
+    subset_masks = [sum(1 << i for i in subset) for subset in subsets]
+
+    uncovered = set(range(len(subsets)))
+    used: Set[int] = set()
+    chosen: List[int] = []
+    cumulative: List[int] = []
+    rng = random.Random(seed)
+
+    while uncovered:
+        available = [i for i in range(len(bets)) if i not in used]
+        if not available:
+            break
+        sample = rng.sample(tuple(uncovered), min(100, len(uncovered)))
+
+        def score(bet_index: int) -> int:
+            mask = bet_masks[bet_index]
+            return sum(
+                1 for subset_idx in sample
+                if (mask & subset_masks[subset_idx]).bit_count() >= guarantee
+            )
+
+        pool = rng.sample(available, min(600, len(available)))
+        best = max(pool, key=score)
+        if score(best) == 0:
+            best = max(available, key=score)
+
+        newly = {
+            subset_idx for subset_idx in uncovered
+            if (bet_masks[best] & subset_masks[subset_idx]).bit_count() >= guarantee
+        }
+        if not newly:
+            break
+        uncovered -= newly
+        used.add(best)
+        chosen.append(best)
+        cumulative.append(len(subsets) - len(uncovered))
+
+    return bets, chosen, cumulative
+
+
 class ClosingEngine:
 
     @staticmethod
@@ -181,6 +246,15 @@ class ClosingEngine:
         pelo menos um jogo gerado terá no mínimo guarantee acertos.
         """
         numbers = sorted(set(selected_numbers))
+        n = len(numbers)
+        if n < game_size or guarantee > game_size or condition_hits > n or guarantee > condition_hits:
+            return []
+
+        num_bets = math.comb(n, game_size)
+        if _estimated_relations(n, game_size, condition_hits, guarantee, num_bets) > MAX_COVER_RELATIONS:
+            bets, chosen, _ = _heavy_cover(numbers, game_size, guarantee, condition_hits)
+            return [[numbers[i] for i in bets[bet]] for bet in chosen]
+
         cover_index = _build_cover_index(numbers, game_size, guarantee, condition_hits)
         if cover_index is None:
             return []
@@ -285,11 +359,20 @@ class ClosingEngine:
         Retorna lista de {num_bets, coverage_pct} para plotagem.
         """
         numbers = sorted(set(selected_numbers))
-        cover_index = _build_cover_index(numbers, game_size, guarantee, condition_hits)
-        if cover_index is None:
+        n = len(numbers)
+        if n < game_size or guarantee > game_size or condition_hits > n or guarantee > condition_hits:
             return []
-        _, covered_by, cover_masks, total_subsets = cover_index
-        _, cumulative = _greedy_cover(covered_by, cover_masks)
+
+        num_bets = math.comb(n, game_size)
+        if _estimated_relations(n, game_size, condition_hits, guarantee, num_bets) > MAX_COVER_RELATIONS:
+            _, _, cumulative = _heavy_cover(numbers, game_size, guarantee, condition_hits)
+            total_subsets = math.comb(n, condition_hits)
+        else:
+            cover_index = _build_cover_index(numbers, game_size, guarantee, condition_hits)
+            if cover_index is None:
+                return []
+            _, covered_by, cover_masks, total_subsets = cover_index
+            _, cumulative = _greedy_cover(covered_by, cover_masks)
         return [
             {
                 "num_bets": position + 1,

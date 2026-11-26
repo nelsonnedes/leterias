@@ -1,3 +1,6 @@
+from datetime import date, datetime
+
+import httpx
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
@@ -37,9 +40,38 @@ async def get_latest_results(
     ]
 
 
+async def _fetch_latest_from_caixa(spec: dict) -> dict | None:
+    """Consulta o último concurso diretamente na API oficial da Caixa."""
+    endpoint = spec["db_name"].lower()
+    url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{endpoint}"
+    async with httpx.AsyncClient(timeout=8.0) as client:
+        response = await client.get(url, headers={"User-Agent": "LotoPredict/2.0"})
+        response.raise_for_status()
+        data = response.json()
+
+    raw_numbers = data.get("listaDezenas") or []
+    numbers = sorted(int(n) for n in raw_numbers if str(n).isdigit())
+    expected = spec["numbers_to_draw"]
+    if len(numbers) != expected or len(set(numbers)) != expected:
+        return None
+    if not all(1 <= n <= spec["total_numbers"] for n in numbers):
+        return None
+
+    draw_date = datetime.strptime(data["dataApuracao"], "%d/%m/%Y").date()
+    contest = data.get("numero")
+    return {
+        "lottery_name": spec["display_name"],
+        "reference": f"Concurso {contest}" if contest else f"Sorteio de {draw_date.strftime('%d/%m/%Y')}",
+        "draw_date": draw_date.isoformat(),
+        "numbers": numbers,
+        "source_url": url,
+        "source": "caixa-live",
+    }
+
+
 @router.get("/lottery/{lottery_name}/latest", response_model=dict)
 async def get_latest_draw(lottery_name: str, db: Session = Depends(get_db)):
-    """Último concurso real de uma loteria — usado na conferência de coleções."""
+    """Último concurso real — ao vivo da Caixa quando o banco local estiver atrasado."""
     spec = _get_lottery_spec(lottery_name)
     result = (
         db.query(LotteryResult)
@@ -47,15 +79,34 @@ async def get_latest_draw(lottery_name: str, db: Session = Depends(get_db)):
         .order_by(LotteryResult.draw_date.desc())
         .first()
     )
-    if not result:
+
+    stale = result is None or result.draw_date < date.today()
+    if stale:
+        try:
+            live = await _fetch_latest_from_caixa(spec)
+            if live and (result is None or live["draw_date"] > result.draw_date.isoformat()):
+                return live
+        except Exception:
+            pass  # mantém o último registro local se a Caixa não responder
+
+    if result is None:
         raise HTTPException(status_code=404, detail="Nenhum resultado encontrado para esta loteria.")
-    return {
+
+    payload = {
         "lottery_name": spec["display_name"],
         "reference": result.source_reference or f"Sorteio de {result.draw_date.strftime('%d/%m/%Y')}",
         "draw_date": result.draw_date.isoformat(),
         "numbers": result.numbers,
         "source_url": result.source_url,
+        "source": "database",
+        "stale": stale,
     }
+    if stale:
+        payload["notice"] = (
+            "A Caixa não respondeu; usando o último concurso disponível no banco local "
+            f"({result.draw_date.strftime('%d/%m/%Y')}), que pode estar desatualizado."
+        )
+    return payload
 
 
 @router.get("/lottery/{lottery_name}/stats", response_model=dict)

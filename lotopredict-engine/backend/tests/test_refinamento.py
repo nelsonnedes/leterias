@@ -93,6 +93,31 @@ class TestFechamentoRefinado(unittest.TestCase):
         self.assertEqual(response.status_code, 200, response.text)
         self.assertEqual(response.json()["lottery"], "Lotofácil")
 
+    def test_heavy_fechamento_uses_heuristic(self):
+        response = client.post(
+            "/api/v1/fechamento",
+            json={
+                "lottery_name": "Lotofácil",
+                "selected_numbers": list(range(1, 21)),
+                "guarantee": 11,
+                "condition_hits": 15,
+            },
+        )
+        self.assertEqual(response.status_code, 200, response.text)
+        data = response.json()
+        self.assertGreater(len(data["games"]), 0)
+        coverage = client.post(
+            "/api/v1/fechamento/coverage",
+            json={
+                "lottery_name": "Lotofácil",
+                "selected_numbers": list(range(1, 21)),
+                "guarantee": 11,
+                "condition_hits": 15,
+                "games": data["games"],
+            },
+        ).json()
+        self.assertEqual(coverage["coverage_pct"], 100.0)
+
     def test_invalid_guarantee_is_rejected(self):
         response = client.post(
             "/api/v1/fechamento",

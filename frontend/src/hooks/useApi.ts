@@ -157,6 +157,8 @@ export interface CollectionDetail {
     reference: string;
     draw_date: string;
     numbers: number[];
+    source?: 'caixa-live' | 'database';
+    stale?: boolean;
   } | null;
   checking_summary: {
     game_index: number;
@@ -427,6 +429,8 @@ export const useApi = () => {
           reference: latest.reference,
           draw_date: latest.draw_date,
           numbers: latest.numbers,
+          source: latest.source,
+          stale: latest.stale,
         },
         checking_summary: detail.checking_summary.map((res) => {
           const hits = res.game.filter((n) => realSet.has(n)).length;
@@ -463,6 +467,9 @@ export const useApi = () => {
     draw_date: string;
     numbers: number[];
     source_url?: string;
+    source?: 'caixa-live' | 'database';
+    stale?: boolean;
+    notice?: string;
   }> => {
     const res = await api.get(`/lottery/${canonicalLotteryKey(lotteryName)}/latest`);
     return res.data;
