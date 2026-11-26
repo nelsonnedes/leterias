@@ -471,6 +471,19 @@ export const useApi = () => {
     stale?: boolean;
     notice?: string;
   }> => {
+    // 1) Proxy serverless na Vercel (consegue alcançar a Caixa)
+    try {
+      const proxy = await axios.get('/api/latest', {
+        params: { lottery: canonicalLotteryKey(lotteryName) },
+        timeout: 15000,
+      });
+      if (proxy.data && Array.isArray(proxy.data.numbers) && proxy.data.numbers.length > 0) {
+        return proxy.data;
+      }
+    } catch (err) {
+      console.warn('Proxy Vercel indisponível, tentando backend:', err);
+    }
+    // 2) Backend (banco local + tentativa direta à Caixa)
     const res = await api.get(`/lottery/${canonicalLotteryKey(lotteryName)}/latest`);
     return res.data;
   };

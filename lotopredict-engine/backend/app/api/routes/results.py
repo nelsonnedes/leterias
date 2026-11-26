@@ -44,7 +44,7 @@ async def _fetch_latest_from_caixa(spec: dict) -> dict | None:
     """Consulta o último concurso diretamente na API oficial da Caixa."""
     endpoint = spec["db_name"].lower()
     url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{endpoint}"
-    async with httpx.AsyncClient(timeout=8.0) as client:
+    async with httpx.AsyncClient(timeout=25.0, follow_redirects=True) as client:
         response = await client.get(url, headers={"User-Agent": "LotoPredict/2.0"})
         response.raise_for_status()
         data = response.json()
