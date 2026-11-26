@@ -384,12 +384,15 @@ async def post_fechamento(data: FechamentoRequest):
         )
 
     # Executa a geração combinatória
-    games = ClosingEngine.generate_desdobramento(
-        selected_numbers=clean_numbers,
-        game_size=game_size,
-        guarantee=data.guarantee,
-        condition_hits=data.condition_hits
-    )
+    try:
+        games = ClosingEngine.generate_desdobramento(
+            selected_numbers=clean_numbers,
+            game_size=game_size,
+            guarantee=data.guarantee,
+            condition_hits=data.condition_hits
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     
     return {
         "lottery": display_name,
@@ -436,12 +439,15 @@ async def get_coverage_curve(
     except ValueError:
         raise HTTPException(status_code=400, detail="selected_numbers deve conter inteiros separados por vírgula.")
     spec = get_lottery_spec(lottery_name)
-    curve = ClosingEngine.get_coverage_curve(
-        selected_numbers=sorted(set(numbers)),
-        game_size=spec["numbers_to_draw"],
-        guarantee=guarantee,
-        condition_hits=condition_hits,
-    )
+    try:
+        curve = ClosingEngine.get_coverage_curve(
+            selected_numbers=sorted(set(numbers)),
+            game_size=spec["numbers_to_draw"],
+            guarantee=guarantee,
+            condition_hits=condition_hits,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     return {
         "lottery": spec["display_name"],
         "curve": curve,

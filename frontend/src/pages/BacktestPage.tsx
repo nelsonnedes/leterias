@@ -1,6 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import { useApi, type BacktestResponse } from '../hooks/useApi';
-import { TrendingUp, RefreshCw, BarChart2, Play, Award, CalendarDays, Save, CheckCircle2, Trash2 } from 'lucide-react';
+import { useSharedGameGroup, gameKey } from '../hooks/useSharedGameGroup';
+import { GameGroupPanel } from '../components/GameGroupPanel';
+import { TrendingUp, RefreshCw, BarChart2, Play, Award, CalendarDays } from 'lucide-react';
 
 export const BacktestPage: React.FC = () => {
   const api = useApi();
@@ -12,57 +14,24 @@ export const BacktestPage: React.FC = () => {
   const [strategy, setStrategy] = useState<string>('uniform');
   const [fromStart, setFromStart] = useState<boolean>(true);
 
-  // Grupo de jogos pendente: acumula entre execuções e só é salvo no final
-  const GROUP_STORAGE_KEY = 'lotopredict_backtest_group';
-  const gameKey = (game: number[]) => [...game].sort((a, b) => a - b).join(',');
-  const [pendingGames, setPendingGames] = useState<number[][]>(() => {
-    try {
-      const raw = localStorage.getItem(GROUP_STORAGE_KEY);
-      const parsed = raw ? JSON.parse(raw) : [];
-      return Array.isArray(parsed) ? parsed : [];
-    } catch {
-      return [];
-    }
-  });
-  const [collectionName, setCollectionName] = useState<string>('');
-  const [savedMessage, setSavedMessage] = useState<string | null>(null);
-  const [saveError, setSaveError] = useState<string | null>(null);
-  const [saving, setSaving] = useState<boolean>(false);
+  // Grupo compartilhado por todos os geradores (persistido no dispositivo)
+  const {
+    games: pendingGames,
+    toggleGame,
+    removeAt,
+    clear,
+    setMessage: setGroupMessage,
+  } = useSharedGameGroup();
   const [minHits, setMinHits] = useState<number>(0);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem(GROUP_STORAGE_KEY, JSON.stringify(pendingGames));
-    } catch {
-      /* armazenamento indisponível */
-    }
-  }, [pendingGames]);
 
   // Estados de resposta
   const [backtestResult, setBacktestResult] = useState<BacktestResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleToggleGame = (game: number[]) => {
-    const key = gameKey(game);
-    setPendingGames((prev) =>
-      prev.some((g) => gameKey(g) === key)
-        ? prev.filter((g) => gameKey(g) !== key)
-        : [...prev, [...game]],
-    );
-    setSavedMessage(null);
-  };
-
-  const handleClearGroup = () => {
-    setPendingGames([]);
-    setSavedMessage(null);
-    setSaveError(null);
-  };
-
   const handleRunBacktest = async () => {
     setLoading(true);
     setError(null);
-    setSavedMessage(null);
     // O grupo pendente não é limpo: ele acumula jogos entre execuções.
     try {
       const data = await api.runBacktest(lottery, numDraws, numGamesPerDraw, strategy, fromStart);
@@ -72,25 +41,6 @@ export const BacktestPage: React.FC = () => {
       console.error(err);
     } finally {
       setLoading(false);
-    }
-  };
-
-  const handleSaveGroup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!collectionName.trim() || pendingGames.length === 0) return;
-    setSaving(true);
-    setSaveError(null);
-    setSavedMessage(null);
-    try {
-      await api.saveCollection(collectionName.trim(), lottery, pendingGames);
-      setSavedMessage(`${pendingGames.length} jogos do grupo salvos juntos em "${collectionName.trim()}".`);
-      setCollectionName('');
-      setPendingGames([]);
-    } catch (err) {
-      console.error('Erro ao salvar grupo:', err);
-      setSaveError('Não foi possível salvar o grupo. Tente novamente.');
-    } finally {
-      setSaving(false);
     }
   };
 
@@ -123,8 +73,8 @@ export const BacktestPage: React.FC = () => {
                 onChange={(e) => {
                   const next = e.target.value;
                   if (next !== lottery && pendingGames.length > 0) {
-                    setPendingGames([]);
-                    setSavedMessage('Grupo limpo ao trocar de loteria.');
+                    clear();
+                    setGroupMessage('Grupo limpo ao trocar de loteria.');
                   }
                   setLottery(next);
                   setBacktestResult(null);
@@ -334,70 +284,15 @@ export const BacktestPage: React.FC = () => {
                     <span className="text-green-400 font-bold">verde</span> foram acertados.
                   </p>
 
-                  {/* Grupo pendente: acumula jogos entre execuções e só é salvo no final */}
-                  <div className="mt-4 p-4 bg-blue-500/5 border border-blue-500/20 rounded-xl space-y-3">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div>
-                        <h5 className="text-sm font-bold text-white">Grupo de jogos pendente ({pendingGames.length})</h5>
-                        <p className="text-[11px] text-gray-400">
-                          Os jogos ficam agrupados aqui e se acumulam entre execuções. Salve todos juntos em Minhas Coleções quando quiser.
-                        </p>
-                      </div>
-                      {pendingGames.length > 0 && (
-                        <button
-                          type="button"
-                          onClick={handleClearGroup}
-                          className="px-3 py-1.5 bg-red-500/10 hover:bg-red-500/20 text-red-300 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" /> Limpar grupo
-                        </button>
-                      )}
-                    </div>
-                    {pendingGames.length > 0 && (
-                      <div className="max-h-32 overflow-y-auto space-y-1">
-                        {pendingGames.map((game, idx) => (
-                          <div key={`${gameKey(game)}-${idx}`} className="flex items-center justify-between px-2 py-1 bg-dark-bg/60 border border-dark-border rounded-lg text-[11px]">
-                            <span className="text-gray-300">{game.map((n) => String(n).padStart(2, '0')).join(' ')}</span>
-                            <button
-                              type="button"
-                              onClick={() => setPendingGames((prev) => prev.filter((_, i) => i !== idx))}
-                              className="text-red-300 hover:text-red-200 cursor-pointer"
-                              aria-label={`Remover jogo ${idx + 1} do grupo`}
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
-                  <form onSubmit={handleSaveGroup} className="mt-4 flex flex-col md:flex-row gap-2">
-                    <input
-                      type="text"
-                      value={collectionName}
-                      onChange={(e) => setCollectionName(e.target.value)}
-                      placeholder="Nome da coleção (Ex: Melhores do Backtest)"
-                      className="flex-1 bg-dark-bg border border-dark-border rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                  <div className="mt-4">
+                    <GameGroupPanel
+                      lottery={lottery}
+                      games={pendingGames}
+                      onRemove={removeAt}
+                      onClear={() => { clear(); setGroupMessage(null); }}
+                      onSaved={() => { clear(); setGroupMessage(null); }}
                     />
-                    <button
-                      type="submit"
-                      disabled={pendingGames.length === 0 || !collectionName.trim() || saving}
-                      className="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800/50 text-white font-bold rounded-xl text-sm flex items-center gap-2 cursor-pointer"
-                    >
-                      <Save className="w-4 h-4" /> {saving ? 'Salvando...' : 'Salvar grupo em Minhas Coleções'}
-                    </button>
-                  </form>
-
-                  {saveError && (
-                    <div role="alert" className="mt-3 p-3 bg-red-950/20 border border-red-900/30 text-red-400 rounded-lg text-sm">{saveError}</div>
-                  )}
-
-                  {savedMessage && (
-                    <div role="status" className="mt-3 p-3 bg-green-950/20 border border-green-900/30 text-green-400 rounded-lg text-sm flex items-center gap-2">
-                      <CheckCircle2 className="w-4 h-4" /> {savedMessage}
-                    </div>
-                  )}
+                  </div>
 
                   <div className="mt-4 max-h-80 overflow-y-auto pr-1 space-y-1.5">
                     {backtestResult.top_games.slice(0, 30).map((item, idx) => {
@@ -416,7 +311,7 @@ export const BacktestPage: React.FC = () => {
                           <input
                             type="checkbox"
                             checked={selected}
-                            onChange={() => handleToggleGame(item.game)}
+                            onChange={() => toggleGame(item.game)}
                             className="w-4 h-4 accent-green-500"
                           />
                           <span className="font-bold text-gray-400 w-24">Concurso {item.concurso}</span>

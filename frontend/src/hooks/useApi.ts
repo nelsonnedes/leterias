@@ -482,6 +482,7 @@ export const useApi = () => {
         guarantee: params.guarantee,
         condition_hits: params.condition_hits,
       },
+      timeout: 120000,
     });
     return res.data;
   };
@@ -501,9 +502,13 @@ export const useApi = () => {
   // Executar fechamento combinatório
   const runFechamento = async (params: FechamentoParams): Promise<FechamentoResult> => {
     try {
-      const res = await api.post('/fechamento', params);
+      // Fechamento é computacionalmente caro: timeout dedicado, sem fallback local
+      const res = await api.post('/fechamento', params, { timeout: 120000 });
       return res.data;
     } catch (err: any) {
+      if (err?.code === 'ECONNABORTED' || String(err?.message || '').includes('timeout')) {
+        throw new Error('O cálculo do fechamento está demorando. Reduza o número de dezenas ou a garantia.');
+      }
       if (isNetworkError(err)) {
         console.warn('API local offline. Executando fechamento combinatório no cliente.');
         const lot = canonicalLotteryKey(params.lottery_name);

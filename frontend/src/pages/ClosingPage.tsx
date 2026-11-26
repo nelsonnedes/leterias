@@ -1,5 +1,7 @@
 import React, { useState } from 'react';
 import { useApi } from '../hooks/useApi';
+import { useSharedGameGroup, gameKey } from '../hooks/useSharedGameGroup';
+import { GameGroupPanel } from '../components/GameGroupPanel';
 import { Layers, CheckCircle2, Save, ShieldCheck, Sparkles, RefreshCw } from 'lucide-react';
 
 export const ClosingPage: React.FC = () => {
@@ -39,6 +41,18 @@ export const ClosingPage: React.FC = () => {
   const [quickLoading, setQuickLoading] = useState<boolean>(false);
   const [quickMessage, setQuickMessage] = useState<string | null>(null);
 
+  // Grupo compartilhado e controle de jogos exibidos
+  const {
+    games: pendingGames,
+    addGames,
+    removeAt,
+    clear,
+    setMessage: setGroupMessage,
+  } = useSharedGameGroup();
+  const [desiredGames, setDesiredGames] = useState<number>(10);
+  const [hitsByGame, setHitsByGame] = useState<Record<string, number>>({});
+  const [lastDrawReference, setLastDrawReference] = useState<string | null>(null);
+
   // Limitações de dezenas para evitar timeout / estouro de RAM no serverless
   const LOTTERY_SPECS: Record<string, {
     total: number;
@@ -76,6 +90,10 @@ export const ClosingPage: React.FC = () => {
 
   const currentSpec = LOTTERY_SPECS[lottery];
   const displayLotteryName = lottery === 'megasena' ? 'Mega-Sena' : lottery === 'lotofacil' ? 'Lotofácil' : 'Quina';
+  const sourceGames: number[][] = results
+    ? (showAll || !lastFilteredGames ? results.games : lastFilteredGames ?? [])
+    : [];
+  const displayedGames = sourceGames.slice(0, desiredGames);
 
   const handleLotteryChange = (newLottery: string) => {
     setLottery(newLottery);
@@ -290,6 +308,22 @@ export const ClosingPage: React.FC = () => {
         console.warn('Não foi possível calcular a cobertura real:', err);
       }
 
+      // Acertos contra o último concurso real (informativo e retrospectivo)
+      setHitsByGame({});
+      setLastDrawReference(null);
+      try {
+        const latest = await api.getLatestDraw(lottery);
+        const realSet = new Set(latest.numbers);
+        const hits: Record<string, number> = {};
+        for (const game of data.games) {
+          hits[gameKey(game)] = game.filter((n) => realSet.has(n)).length;
+        }
+        setHitsByGame(hits);
+        setLastDrawReference(latest.reference);
+      } catch (err) {
+        console.warn('Não foi possível buscar o último concurso:', err);
+      }
+
       // Sugere um nome para a coleção
       setCollectionName(`Fechamento ${displayLotteryName} - ${selectedNumbers.length} Dezenas`);
     } catch (err: any) {
@@ -302,7 +336,7 @@ export const ClosingPage: React.FC = () => {
 
   const handleSaveCollection = async () => {
     if (!results || !collectionName.trim()) return;
-    const gamesToSave = showAll || !lastFilteredGames ? results.games : lastFilteredGames;
+    const gamesToSave = displayedGames;
     try {
       await api.saveCollection(collectionName.trim(), displayLotteryName, gamesToSave);
       setSaveSuccess(true);
@@ -415,6 +449,22 @@ export const ClosingPage: React.FC = () => {
             {quickMessage && (
               <p role="status" className="text-[10px] text-blue-300 leading-relaxed">{quickLoading ? 'Buscando dados...' : quickMessage}</p>
             )}
+          </div>
+
+          {/* Quantidade de jogos */}
+          <div className="glass-panel p-5 rounded-2xl space-y-2">
+            <h3 className="text-sm font-bold text-white">Quantidade de jogos</h3>
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              Limita quantos jogos são exibidos e enviados ao grupo. Usar menos jogos que o necessário pode reduzir a cobertura da garantia.
+            </p>
+            <input
+              type="number"
+              min={1}
+              max={results?.total_games_generated ?? 500}
+              value={desiredGames}
+              onChange={(e) => setDesiredGames(Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
+              className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2 text-white text-sm"
+            />
           </div>
 
           {/* Regras e Garantias */}
@@ -659,15 +709,49 @@ export const ClosingPage: React.FC = () => {
 
               {/* Lista Visual de Jogos */}
               <div className="space-y-3">
-                <h4 className="text-sm font-bold text-white">Relação de Volantes Combinados</h4>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h4 className="text-sm font-bold text-white">
+                    Relação de Volantes Combinados ({displayedGames.length} de {sourceGames.length})
+                  </h4>
+                  <button
+                    type="button"
+                    onClick={() => addGames(displayedGames)}
+                    disabled={displayedGames.length === 0}
+                    className="px-3 py-1.5 bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/30 text-blue-300 rounded-lg text-[11px] font-bold flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                  >
+                    <Layers className="w-3.5 h-3.5" /> Adicionar jogos ao grupo
+                  </button>
+                </div>
+                <p className="text-[10px] text-gray-400">
+                  {lastDrawReference
+                    ? `Acertos calculados contra ${lastDrawReference} (retrospectivo) — não indicam chance futura.`
+                    : 'Os acertos contra o último concurso serão exibidos quando disponíveis.'}
+                </p>
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-3 max-h-[300px] overflow-y-auto pr-2">
-                  {(showAll || !lastFilteredGames ? results.games : lastFilteredGames).map((game, idx) => (
-                    <div key={idx} className="p-3 bg-dark-bg/60 border border-dark-border rounded-xl flex items-center justify-between">
-                      <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Aposta #{idx + 1}</span>
+                  {displayedGames.map((game, idx) => (
+                    <div key={idx} className="p-3 bg-dark-bg/60 border border-dark-border rounded-xl space-y-2">
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[10px] text-gray-500 font-bold uppercase tracking-wider">Aposta #{idx + 1}</span>
+                        <div className="flex items-center gap-2">
+                          <span
+                            title="Acertos contra o último concurso (retrospectivo)"
+                            className="px-2 py-0.5 bg-blue-500/10 border border-blue-500/20 text-blue-300 rounded-lg text-[10px] font-bold"
+                          >
+                            {hitsByGame[gameKey(game)] ?? 0} acertos
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => addGames([game])}
+                            className="text-[10px] font-bold text-green-300 hover:text-green-200 cursor-pointer"
+                          >
+                            + grupo
+                          </button>
+                        </div>
+                      </div>
                       <div className="flex flex-wrap gap-1">
-                        {game.map(num => (
-                          <div 
-                            key={num} 
+                        {game.map((num) => (
+                          <div
+                            key={num}
                             className="w-7 h-7 rounded-lg bg-dark-bg border border-dark-border flex items-center justify-center font-extrabold text-[10px] text-gray-300"
                           >
                             {String(num).padStart(2, '0')}
@@ -678,6 +762,14 @@ export const ClosingPage: React.FC = () => {
                   ))}
                 </div>
               </div>
+
+              <GameGroupPanel
+                lottery={lottery}
+                games={pendingGames}
+                onRemove={removeAt}
+                onClear={() => { clear(); setGroupMessage(null); }}
+                onSaved={() => { clear(); setGroupMessage(null); }}
+              />
             </div>
           )}
         </div>

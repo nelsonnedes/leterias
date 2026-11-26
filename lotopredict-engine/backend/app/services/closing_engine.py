@@ -1,7 +1,11 @@
 import itertools
 import random
 import math
+from collections import defaultdict
 from typing import List, Set, Dict, Any, Tuple, Sequence
+
+# Limite de relações de cobertura para evitar explosão combinatória no servidor
+MAX_COVER_RELATIONS = 8_000_000
 
 
 def _to_mask(numbers: Sequence[int], index: Dict[int, int]) -> int:
@@ -10,6 +14,120 @@ def _to_mask(numbers: Sequence[int], index: Dict[int, int]) -> int:
     for number in numbers:
         mask |= 1 << index[number]
     return mask
+
+
+def _build_cover_index(
+    numbers: List[int], game_size: int, guarantee: int, condition_hits: int
+):
+    """Índice de cobertura: para cada aposta, quais subsets ela cobre.
+
+    Em vez de comparar cada aposta contra todos os subsets (O(B*S)), enumeramos
+    diretamente os subsets que uma aposta cobre: escolhemos quais dezenas da
+    aposta são trocadas por dezenas de fora. Para 20 dezenas / 15 sorteadas /
+    garantia 14, isso cai de ~240 milhões de comparações para ~1,2 milhão.
+    """
+    n, k, c, g = len(numbers), game_size, condition_hits, guarantee
+    if n < k or k <= 0 or g > k or c > n or g > c:
+        return None
+
+    bets = list(itertools.combinations(range(n), k))
+    subsets = list(itertools.combinations(range(n), c))
+    if not bets or not subsets:
+        return None
+
+    relations_per_bet = 0
+    for common in range(g, min(k, c) + 1):
+        excluded = k - common
+        added = c - common
+        if excluded < 0 or added < 0 or added > n - k:
+            continue
+        relations_per_bet += math.comb(k, excluded) * math.comb(n - k, added)
+    if relations_per_bet * len(bets) > MAX_COVER_RELATIONS:
+        raise ValueError(
+            "Combinação pesada demais para o fechamento neste servidor. "
+            "Reduza o número de dezenas ou a garantia."
+        )
+
+    subset_index = {subset: idx for idx, subset in enumerate(subsets)}
+    covered_by: List[List[int]] = [[] for _ in subsets]
+    cover_masks: List[int] = []
+
+    for bet in bets:
+        bet_set = set(bet)
+        outside = [i for i in range(n) if i not in bet_set]
+        covered = set()
+        for common in range(g, min(k, c) + 1):
+            excluded = k - common
+            added = c - common
+            if excluded < 0 or added < 0 or added > len(outside):
+                continue
+            for removed in itertools.combinations(bet, excluded):
+                base = bet_set - set(removed)
+                for inserted in itertools.combinations(outside, added):
+                    subset = tuple(sorted(base | set(inserted)))
+                    idx = subset_index.get(subset)
+                    if idx is not None:
+                        covered.add(idx)
+        bet_position = len(cover_masks)
+        for idx in covered:
+            covered_by[idx].append(bet_position)
+        mask = 0
+        for idx in covered:
+            mask |= 1 << idx
+        cover_masks.append(mask)
+
+    return bets, covered_by, cover_masks, len(subsets)
+
+
+def _greedy_cover(covered_by: List[List[int]], cover_masks: List[int]):
+    """Greedy com filas de contagem: atualiza só as apostas afetadas."""
+    counts = [mask.bit_count() for mask in cover_masks]
+    buckets: Dict[int, Set[int]] = defaultdict(set)
+    for bet, count in enumerate(counts):
+        if count > 0:
+            buckets[count].add(bet)
+
+    uncovered = (1 << len(covered_by)) - 1
+    chosen: List[int] = []
+    cumulative_coverage: List[int] = []
+    covered_total = 0
+
+    while uncovered and buckets:
+        max_count = max(buckets)
+        bucket = buckets[max_count]
+        bet = bucket.pop()
+        if not bucket:
+            del buckets[max_count]
+        if counts[bet] != max_count:
+            continue
+
+        newly = cover_masks[bet] & uncovered
+        if not newly:
+            continue
+
+        chosen.append(bet)
+        remaining = newly
+        while remaining:
+            lowest = remaining & -remaining
+            subset_idx = lowest.bit_length() - 1
+            remaining ^= lowest
+            for other in covered_by[subset_idx]:
+                old = counts[other]
+                if old > 0:
+                    old_bucket = buckets.get(old)
+                    if old_bucket is not None:
+                        old_bucket.discard(other)
+                        if not old_bucket:
+                            del buckets[old]
+                    counts[other] = old - 1
+                    if old - 1 > 0:
+                        buckets[old - 1].add(other)
+
+        uncovered &= ~newly
+        covered_total += newly.bit_count()
+        cumulative_coverage.append(covered_total)
+
+    return chosen, cumulative_coverage
 
 
 class ClosingEngine:
@@ -62,66 +180,13 @@ class ClosingEngine:
         Garante que, se condition_hits números sorteados estiverem entre as selected_numbers,
         pelo menos um jogo gerado terá no mínimo guarantee acertos.
         """
-        # Elimina duplicados e ordena
-        numbers = sorted(list(set(selected_numbers)))
-        n_total = len(numbers)
-
-        # Validações de integridade
-        if n_total < game_size:
+        numbers = sorted(set(selected_numbers))
+        cover_index = _build_cover_index(numbers, game_size, guarantee, condition_hits)
+        if cover_index is None:
             return []
-        if guarantee > game_size:
-            return []
-        if condition_hits > n_total:
-            return []
-            
-        # 1/2. Bitmasks permitem contar interseções com bit_count() em vez de sets
-        index = {number: idx for idx, number in enumerate(numbers)}
-        all_possible_bets = [
-            _to_mask(comb, index)
-            for comb in itertools.combinations(numbers, game_size)
-        ]
-        all_draw_subsets = [
-            _to_mask(comb, index)
-            for comb in itertools.combinations(numbers, condition_hits)
-        ]
-
-        uncovered_subsets = set(range(len(all_draw_subsets)))
-
-        # 3. Mapear para cada aposta quais subsets ela cobre (interseção >= guarantee)
-        bet_cover_map = []
-        for bet in all_possible_bets:
-            covered_indices = {
-                idx
-                for idx, subset in enumerate(all_draw_subsets)
-                if (bet & subset).bit_count() >= guarantee
-            }
-            bet_cover_map.append(covered_indices)
-            
-        chosen_bets = []
-        
-        # 4. Algoritmo de cobertura gananciosa (Greedy Cover)
-        while uncovered_subsets:
-            best_bet_idx = -1
-            max_new_cover = 0
-            
-            for idx, covered_indices in enumerate(bet_cover_map):
-                new_cover = len(covered_indices.intersection(uncovered_subsets))
-                if new_cover > max_new_cover:
-                    max_new_cover = new_cover
-                    best_bet_idx = idx
-                    
-            # Se nenhuma aposta puder cobrir novos elementos, encerra
-            if best_bet_idx == -1 or max_new_cover == 0:
-                break
-                
-            best_mask = all_possible_bets[best_bet_idx]
-            chosen_bets.append(
-                [number for number in numbers if best_mask & (1 << index[number])]
-            )
-            # Remove da lista de descobertos os subsets cobertos por essa aposta selecionada
-            uncovered_subsets.difference_update(bet_cover_map[best_bet_idx])
-            
-        return chosen_bets
+        bets, covered_by, cover_masks, _ = cover_index
+        chosen, _ = _greedy_cover(covered_by, cover_masks)
+        return [[numbers[i] for i in bets[bet]] for bet in chosen]
 
     @staticmethod
     def refine_with_simulated_annealing(
@@ -219,44 +284,16 @@ class ClosingEngine:
         calcula quantos subsets de sorteio estão cobertos.
         Retorna lista de {num_bets, coverage_pct} para plotagem.
         """
-        numbers = sorted(list(set(selected_numbers)))
-        if len(numbers) < game_size:
+        numbers = sorted(set(selected_numbers))
+        cover_index = _build_cover_index(numbers, game_size, guarantee, condition_hits)
+        if cover_index is None:
             return []
-
-        all_possible_bets = [set(comb) for comb in itertools.combinations(numbers, game_size)]
-        all_draw_subsets = [set(comb) for comb in itertools.combinations(numbers, condition_hits)]
-        total_subsets = len(all_draw_subsets)
-
-        if total_subsets == 0:
-            return []
-
-        # Cobertura greedy incremental
-        uncovered = set(range(total_subsets))
-        bet_cover_map = []
-        for bet in all_possible_bets:
-            covered = set()
-            for idx, subset in enumerate(all_draw_subsets):
-                if len(bet.intersection(subset)) >= guarantee:
-                    covered.add(idx)
-            bet_cover_map.append(covered)
-
-        curve = []
-        cumulative_covered = set()
-        remaining_bets = list(range(len(all_possible_bets)))
-
-        while remaining_bets and len(cumulative_covered) < total_subsets:
-            # Escolhe a aposta que cobre mais novos subsets
-            best_idx = max(remaining_bets,
-                          key=lambda i: len(bet_cover_map[i] - cumulative_covered))
-            new_covered = bet_cover_map[best_idx] - cumulative_covered
-            if not new_covered:
-                break
-            cumulative_covered.update(new_covered)
-            remaining_bets.remove(best_idx)
-
-            curve.append({
-                "num_bets": len(curve) + 1,
-                "coverage_pct": round(len(cumulative_covered) / total_subsets * 100, 1)
-            })
-
-        return curve
+        _, covered_by, cover_masks, total_subsets = cover_index
+        _, cumulative = _greedy_cover(covered_by, cover_masks)
+        return [
+            {
+                "num_bets": position + 1,
+                "coverage_pct": round(covered / total_subsets * 100, 1),
+            }
+            for position, covered in enumerate(cumulative)
+        ]

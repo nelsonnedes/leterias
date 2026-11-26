@@ -1,6 +1,8 @@
 import React, { useEffect, useState } from 'react';
 import { useApi, type OddsInfo } from '../hooks/useApi';
-import { Sparkles, Save, RefreshCw, CheckCircle2 } from 'lucide-react';
+import { useSharedGameGroup } from '../hooks/useSharedGameGroup';
+import { GameGroupPanel } from '../components/GameGroupPanel';
+import { Sparkles, Save, RefreshCw, CheckCircle2, Layers } from 'lucide-react';
 
 interface GeneratorPageProps {
   initialLottery?: string;
@@ -26,6 +28,14 @@ export const GeneratorPage: React.FC<GeneratorPageProps> = ({ initialLottery = '
   const [saving, setSaving] = useState<boolean>(false);
   const [saveSuccess, setSaveSuccess] = useState<boolean>(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const {
+    games: pendingGames,
+    addGames,
+    removeAt,
+    clear,
+    message: groupMessage,
+    setMessage: setGroupMessage,
+  } = useSharedGameGroup();
 
   useEffect(() => {
     let active = true;
@@ -228,6 +238,17 @@ export const GeneratorPage: React.FC<GeneratorPageProps> = ({ initialLottery = '
                 </div>
               </form>
 
+              <div className="flex flex-wrap items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => addGames(generatedGames)}
+                  className="px-4 py-2.5 bg-blue-600/15 hover:bg-blue-600/25 border border-blue-500/30 text-blue-300 rounded-xl text-xs font-bold flex items-center gap-2 cursor-pointer"
+                >
+                  <Layers className="w-4 h-4" /> Adicionar jogos ao grupo
+                </button>
+                {groupMessage && <span role="status" className="text-[11px] text-gray-400">{groupMessage}</span>}
+              </div>
+
               {saveSuccess && (
                 <div className="p-4 bg-green-950/20 border border-green-900/30 text-green-400 rounded-xl flex items-center gap-2 text-sm font-medium">
                   <CheckCircle2 className="w-5 h-5" />
@@ -240,6 +261,14 @@ export const GeneratorPage: React.FC<GeneratorPageProps> = ({ initialLottery = '
                   {saveError}
                 </div>
               )}
+
+              <GameGroupPanel
+                lottery={lottery}
+                games={pendingGames}
+                onRemove={removeAt}
+                onClear={() => { clear(); setGroupMessage(null); }}
+                onSaved={() => { clear(); setGroupMessage(null); }}
+              />
 
               {/* Lista de Jogos Gerados */}
               <div className="space-y-4">
