@@ -8,11 +8,11 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
-      includeAssets: ['favicon.svg', 'icons.svg'],
+      includeAssets: ['favicon.svg', 'icons.svg', 'icons/icon-192.png', 'icons/icon-512.png', 'icons/icon-180.png'],
       manifest: {
-        name: 'LotoPredict Engine — Matemática Preditiva',
+        name: 'LotoPredict — Gerador de Jogos e Análise de Loterias',
         short_name: 'LotoPredict',
-        description: 'Motor preditivo matemático para loterias. Análise de frequência, fechamento combinatório e backtesting.',
+        description: 'Gerador de jogos com odds transparentes, simulador histórico e fechamentos combinatórios.',
         theme_color: '#090a0f',
         background_color: '#090a0f',
         display: 'standalone',
@@ -22,15 +22,15 @@ export default defineConfig({
         lang: 'pt-BR',
         icons: [
           {
-            src: '/favicon.svg',
+            src: '/icons/icon-192.png',
             sizes: '192x192',
-            type: 'image/svg+xml',
-            purpose: 'any maskable'
+            type: 'image/png',
+            purpose: 'any'
           },
           {
-            src: '/favicon.svg',
+            src: '/icons/icon-512.png',
             sizes: '512x512',
-            type: 'image/svg+xml',
+            type: 'image/png',
             purpose: 'any maskable'
           }
         ]
