@@ -16,6 +16,9 @@
     @apply bg-dark-bg text-gray-300 font-sans antialiased;
     font-family: 'Outfit', sans-serif;
     overflow-x: hidden;
+    overscroll-behavior-x: none;
+    /* Impede que um arrasto lateral no mobile desloche a tela como um carrossel */
+    touch-action: pan-y pinch-zoom;
     width: 100%;
     max-width: 100vw;
     position: relative;
@@ -23,6 +26,8 @@
   
   #root {
     overflow-x: hidden;
+    overscroll-behavior-x: none;
+    touch-action: pan-y pinch-zoom;
     width: 100%;
     max-width: 100vw;
   }

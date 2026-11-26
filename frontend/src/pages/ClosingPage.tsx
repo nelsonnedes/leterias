@@ -49,7 +49,8 @@ export const ClosingPage: React.FC = () => {
     clear,
     setMessage: setGroupMessage,
   } = useSharedGameGroup();
-  const [desiredGames, setDesiredGames] = useState<number>(10);
+  const [desiredGames, setDesiredGames] = useState<string>('10');
+  const desiredGamesCount = Math.max(1, Math.min(500, Number(desiredGames) || 1));
   const [hitsByGame, setHitsByGame] = useState<Record<string, number>>({});
   const [lastDrawReference, setLastDrawReference] = useState<string | null>(null);
 
@@ -93,7 +94,7 @@ export const ClosingPage: React.FC = () => {
   const sourceGames: number[][] = results
     ? (showAll || !lastFilteredGames ? results.games : lastFilteredGames ?? [])
     : [];
-  const displayedGames = sourceGames.slice(0, desiredGames);
+  const displayedGames = sourceGames.slice(0, desiredGamesCount);
 
   const handleLotteryChange = (newLottery: string) => {
     setLottery(newLottery);
@@ -459,10 +460,12 @@ export const ClosingPage: React.FC = () => {
             </p>
             <input
               type="number"
+              inputMode="numeric"
               min={1}
               max={results?.total_games_generated ?? 500}
               value={desiredGames}
-              onChange={(e) => setDesiredGames(Math.max(1, Math.min(500, Number(e.target.value) || 1)))}
+              onChange={(e) => setDesiredGames(e.target.value.replace(/[^\d]/g, ''))}
+              onBlur={() => setDesiredGames(String(desiredGamesCount))}
               className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-2 text-white text-sm"
             />
           </div>
