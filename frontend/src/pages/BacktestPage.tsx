@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useApi, type BacktestResponse } from '../hooks/useApi';
-import { TrendingUp, RefreshCw, BarChart2, Play, Award, CalendarDays } from 'lucide-react';
+import { TrendingUp, RefreshCw, BarChart2, Play, Award, CalendarDays, Save, CheckCircle2 } from 'lucide-react';
 
 export const BacktestPage: React.FC = () => {
   const api = useApi();
@@ -12,6 +12,11 @@ export const BacktestPage: React.FC = () => {
   const [strategy, setStrategy] = useState<string>('combined');
   const [fromStart, setFromStart] = useState<boolean>(true);
 
+  // Jogos mais pontuados selecionados para salvar
+  const [selectedGames, setSelectedGames] = useState<number[]>([]);
+  const [collectionName, setCollectionName] = useState<string>('');
+  const [savedMessage, setSavedMessage] = useState<string | null>(null);
+
   // Estados de resposta
   const [backtestResult, setBacktestResult] = useState<BacktestResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(false);
@@ -20,6 +25,8 @@ export const BacktestPage: React.FC = () => {
   const handleRunBacktest = async () => {
     setLoading(true);
     setError(null);
+    setSavedMessage(null);
+    setSelectedGames([]);
     try {
       const data = await api.runBacktest(lottery, numDraws, numGamesPerDraw, strategy, fromStart);
       setBacktestResult(data);
@@ -29,6 +36,19 @@ export const BacktestPage: React.FC = () => {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleSaveSelected = (e: React.FormEvent) => {
+    e.preventDefault();
+    const topGames = backtestResult?.top_games || [];
+    const games = selectedGames
+      .map((idx) => topGames[idx]?.game)
+      .filter((game): game is number[] => Boolean(game));
+    if (!collectionName.trim() || games.length === 0) return;
+    api.saveCollection(collectionName.trim(), lottery, games);
+    setSavedMessage(`${games.length} jogos salvos na coleção "${collectionName.trim()}".`);
+    setCollectionName('');
+    setSelectedGames([]);
   };
 
   return (
@@ -209,6 +229,79 @@ export const BacktestPage: React.FC = () => {
                     })}
                 </div>
               </div>
+
+              {/* Jogos mais pontuados — seleção para salvar */}
+              {backtestResult.top_games && backtestResult.top_games.length > 0 && (
+                <div className="glass-panel p-6 rounded-2xl">
+                  <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-dark-border">
+                    <h4 className="text-lg font-bold text-white flex items-center gap-2">
+                      <Award className="w-5 h-5 text-green-400" /> Jogos Mais Pontuados
+                    </h4>
+                    <span className="text-xs font-semibold text-blue-400">
+                      {selectedGames.length} selecionado(s)
+                    </span>
+                  </div>
+
+                  <form onSubmit={handleSaveSelected} className="mt-4 flex flex-col md:flex-row gap-2">
+                    <input
+                      type="text"
+                      value={collectionName}
+                      onChange={(e) => setCollectionName(e.target.value)}
+                      placeholder="Nome da coleção (Ex: Melhores do Backtest)"
+                      className="flex-1 bg-dark-bg border border-dark-border rounded-xl px-4 py-2 text-white text-sm focus:outline-none focus:border-blue-500"
+                    />
+                    <button
+                      type="submit"
+                      disabled={selectedGames.length === 0 || !collectionName.trim()}
+                      className="px-5 py-2 bg-green-600 hover:bg-green-700 disabled:bg-green-800/50 text-white font-bold rounded-xl text-sm flex items-center gap-2 cursor-pointer"
+                    >
+                      <Save className="w-4 h-4" /> Salvar selecionados
+                    </button>
+                  </form>
+
+                  {savedMessage && (
+                    <div className="mt-3 p-3 bg-green-950/20 border border-green-900/30 text-green-400 rounded-lg text-sm flex items-center gap-2">
+                      <CheckCircle2 className="w-4 h-4" /> {savedMessage}
+                    </div>
+                  )}
+
+                  <div className="mt-4 max-h-80 overflow-y-auto pr-1 space-y-1.5">
+                    {backtestResult.top_games.slice(0, 30).map((item, idx) => {
+                      const selected = selectedGames.includes(idx);
+                      return (
+                        <label
+                          key={`${item.concurso}-${idx}`}
+                          className={`flex flex-wrap items-center gap-3 px-3 py-2 border rounded-lg cursor-pointer text-xs ${
+                            selected
+                              ? 'bg-green-500/10 border-green-500/30'
+                              : 'bg-dark-bg/40 border-dark-border hover:border-blue-500/40'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={selected}
+                            onChange={() =>
+                              setSelectedGames((prev) =>
+                                prev.includes(idx) ? prev.filter((i) => i !== idx) : [...prev, idx]
+                              )
+                            }
+                            className="w-4 h-4 accent-green-500"
+                          />
+                          <span className="font-bold text-gray-400 w-24">Concurso {item.concurso}</span>
+                          <span className="flex flex-wrap gap-1 flex-1">
+                            {item.game.map((n) => (
+                              <span key={n} className="px-1.5 py-0.5 bg-dark-card border border-dark-border rounded font-bold text-gray-300">
+                                {String(n).padStart(2, '0')}
+                              </span>
+                            ))}
+                          </span>
+                          <span className="font-bold text-green-400">{item.hits} acertos</span>
+                        </label>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* Acertos por Concurso — visão compacta de todo o histórico simulado */}
               <div className="glass-panel p-6 rounded-2xl">

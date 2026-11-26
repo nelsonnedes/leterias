@@ -101,6 +101,7 @@ async def run_backtest(
     total_games_simulated = 0
     results_detail = []
     hits_by_draw = []  # Resumo compacto: concurso -> máximo de acertos
+    all_games_with_hits: List[Tuple[List[int], int, int]] = []
     
     # Loop de simulação
     for i in range(start_test_idx, start_test_idx + test_draws_count):
@@ -121,6 +122,10 @@ async def run_backtest(
             num_games=num_games_per_draw
         )
         
+        ref = real_draw.source_reference or f"Concurso em {real_draw.draw_date.strftime('%d/%m/%Y')}"
+        concurso_match = re.search(r"\d+", ref)
+        concurso_num = int(concurso_match.group()) if concurso_match else 0
+
         draw_hits = []
         for game in predicted_games:
             game_set = set(game)
@@ -130,13 +135,11 @@ async def run_backtest(
             # Atualiza distribuição de acertos
             hits_distribution[hits] = hits_distribution.get(hits, 0) + 1
             total_games_simulated += 1
-            
-        ref = real_draw.source_reference or f"Concurso em {real_draw.draw_date.strftime('%d/%m/%Y')}"
+            all_games_with_hits.append((list(game), hits, concurso_num))
 
         # Resumo compacto com apenas a quantidade de acertos por concurso
-        concurso_match = re.search(r"\d+", ref)
         hits_by_draw.append({
-            "concurso": int(concurso_match.group()) if concurso_match else 0,
+            "concurso": concurso_num,
             "reference": ref,
             "max_hits": max(draw_hits) if draw_hits else 0,
         })
@@ -176,6 +179,22 @@ async def run_backtest(
             "quinas (5 acertos)": hits_distribution.get(5, 0),
         }
 
+    # Jogos mais pontuados (únicos) para o usuário selecionar e salvar
+    seen_games = set()
+    top_games = []
+    for game, hits, concurso_num in sorted(all_games_with_hits, key=lambda x: x[1], reverse=True):
+        key = tuple(game)
+        if key in seen_games:
+            continue
+        seen_games.add(key)
+        top_games.append({
+            "game": game,
+            "hits": hits,
+            "concurso": concurso_num,
+        })
+        if len(top_games) >= 50:
+            break
+
     return {
         "lottery": display_name,
         "strategy_tested": strategy,
@@ -184,6 +203,7 @@ async def run_backtest(
         "hits_distribution": hits_distribution,
         "rewards_summary": reward_metrics,
         "hits_by_draw": hits_by_draw,
+        "top_games": top_games,
         "from_start": from_start,
         "simulations_detail": results_detail[:15]  # Detalhes dos primeiros 15 concursos para manter o payload leve
     }

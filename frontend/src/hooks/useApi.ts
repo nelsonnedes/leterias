@@ -77,6 +77,11 @@ export interface BacktestResponse {
     reference: string;
     max_hits: number;
   }[];
+  top_games?: {
+    game: number[];
+    hits: number;
+    concurso: number;
+  }[];
   from_start?: boolean;
   simulations_detail: {
     reference: string;
@@ -268,6 +273,17 @@ export const useApi = () => {
           max_hits: detail.max_hits_achieved,
         }));
 
+        const top_games = simulations_detail
+          .flatMap((detail) =>
+            detail.games_simulated.map((g) => ({
+              game: g.game,
+              hits: g.hits,
+              concurso: parseInt(detail.reference.replace('Concurso ', ''), 10) || 0,
+            }))
+          )
+          .sort((a, b) => b.hits - a.hits)
+          .slice(0, 50);
+
         return {
           lottery: lotteryName.toUpperCase(),
           strategy_tested: strategy,
@@ -276,6 +292,7 @@ export const useApi = () => {
           hits_distribution,
           rewards_summary,
           hits_by_draw,
+          top_games,
           from_start: true,
           simulations_detail
         };
