@@ -100,7 +100,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
       <div className="flex flex-col lg:flex-row lg:items-center lg:justify-between gap-4">
         <div>
           <h2 className="text-3xl font-extrabold text-white">Dashboard Estatístico</h2>
-          <p className="text-gray-400 mt-1">Análise matemática profunda baseada no acervo histórico oficial da Caixa.</p>
+          <p className="text-gray-400 mt-1">Estatísticas descritivas de sorteios passados. Elas não aumentam a chance de acerto no próximo concurso.</p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex items-center space-x-2 bg-dark-card/60 border border-dark-border px-3 py-2 rounded-xl">
@@ -110,7 +110,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
               <option value="30" className="bg-dark-card">Últimos 30</option>
               <option value="50" className="bg-dark-card">Últimos 50</option>
               <option value="100" className="bg-dark-card">Últimos 100</option>
-              <option value="300" className="bg-dark-card">Todo Histórico</option>
+              <option value="300" className="bg-dark-card">Últimos 300</option>
             </select>
           </div>
           <div className="flex gap-2 p-1 bg-dark-card/60 border border-dark-border rounded-xl">
@@ -185,8 +185,8 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
             </div>
             <div className="glass-panel p-5 rounded-2xl flex items-center justify-between">
               <div>
-                <div className="text-xs text-gray-400 font-medium">Motor Preditivo</div>
-                <div className="text-xs text-gray-500 mt-0.5">Pronto para gerar</div>
+                <div className="text-xs text-gray-400 font-medium">Gerador de jogos</div>
+                <div className="text-xs text-gray-500 mt-0.5">Pronto para montar jogos</div>
               </div>
               <button onClick={() => onNavigateToGenerator(selectedLottery)}
                 className="px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition-all">
@@ -202,7 +202,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
               <div className="glass-panel p-5 rounded-2xl">
                 <div className="flex items-center space-x-2 pb-3 border-b border-dark-border">
                   <TrendingUp className="w-4 h-4 text-green-400" />
-                  <h3 className="text-base font-bold text-white">Números Quentes</h3>
+                  <h3 className="text-base font-bold text-white">Mais frequentes no histórico</h3>
                 </div>
                 <div className="mt-4 space-y-2.5">
                   {stats.most_common_numbers.slice(0, 8).map(([num, count], index) => {
@@ -229,7 +229,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
               <div className="glass-panel p-5 rounded-2xl">
                 <div className="flex items-center space-x-2 pb-3 border-b border-dark-border">
                   <TrendingUp className="w-4 h-4 text-red-400 transform rotate-180" />
-                  <h3 className="text-base font-bold text-white">Números Frios</h3>
+                  <h3 className="text-base font-bold text-white">Menos frequentes no histórico</h3>
                 </div>
                 <div className="mt-4 space-y-2.5">
                   {stats.least_common_numbers.slice(0, 8).map(([num, count], index) => {
@@ -280,7 +280,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
                 <div className="glass-panel p-5 rounded-2xl lg:col-span-3">
                   <div className="flex items-center space-x-2 pb-3 border-b border-dark-border">
                     <Zap className="w-4 h-4 text-yellow-400" />
-                    <h3 className="text-base font-bold text-white">🔥 Números em Alta (Tendência Recente)</h3>
+                    <h3 className="text-base font-bold text-white">Maior variação recente (descritiva)</h3>
                   </div>
                   <p className="text-xs text-gray-500 mt-2 mb-4">Comparação dos últimos 25 sorteios vs histórico total.</p>
                   <div className="flex flex-wrap gap-3">
@@ -402,7 +402,7 @@ export const DashboardPage: React.FC<DashboardPageProps> = ({ onNavigateToGenera
                 <Zap className="w-5 h-5 text-yellow-400" />
                 Análise de Tendências por Janela Deslizante
               </h3>
-              <p className="text-xs text-gray-500 mb-6">Compara a frequência dos números nos últimos 25 sorteios contra o histórico total. Números com alta recente podem indicar tendência.</p>
+              <p className="text-xs text-gray-400 mb-6">Compara a frequência nos últimos 25 sorteios com o histórico total. Variações assim são esperadas pelo acaso e não indicam tendência futura.</p>
 
               {/* Frequência Relativa com Recharts */}
               <div className="h-72 mb-6">

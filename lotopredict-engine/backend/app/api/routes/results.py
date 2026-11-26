@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any
 from app.database.models import LotteryResult
@@ -10,11 +10,14 @@ router = APIRouter()
 
 
 def _get_lottery_spec(lottery_name: str) -> dict:
-    return get_lottery_spec(lottery_name, strict=False)
+    return get_lottery_spec(lottery_name, strict=True)
 
 
 @router.get("/lottery/results", response_model=List[dict])
-async def get_latest_results(limit: int = 10, db: Session = Depends(get_db)):
+async def get_latest_results(
+    limit: int = Query(default=10, ge=1, le=500),
+    db: Session = Depends(get_db),
+):
     """Retorna os últimos resultados das loterias."""
     results = (
         db.query(LotteryResult)
@@ -34,6 +37,27 @@ async def get_latest_results(limit: int = 10, db: Session = Depends(get_db)):
     ]
 
 
+@router.get("/lottery/{lottery_name}/latest", response_model=dict)
+async def get_latest_draw(lottery_name: str, db: Session = Depends(get_db)):
+    """Último concurso real de uma loteria — usado na conferência de coleções."""
+    spec = _get_lottery_spec(lottery_name)
+    result = (
+        db.query(LotteryResult)
+        .filter(LotteryResult.lottery_name == spec["db_name"])
+        .order_by(LotteryResult.draw_date.desc())
+        .first()
+    )
+    if not result:
+        raise HTTPException(status_code=404, detail="Nenhum resultado encontrado para esta loteria.")
+    return {
+        "lottery_name": spec["display_name"],
+        "reference": result.source_reference or f"Sorteio de {result.draw_date.strftime('%d/%m/%Y')}",
+        "draw_date": result.draw_date.isoformat(),
+        "numbers": result.numbers,
+        "source_url": result.source_url,
+    }
+
+
 @router.get("/lottery/{lottery_name}/stats", response_model=dict)
 async def get_lottery_stats(lottery_name: str, limit: int = 100, db: Session = Depends(get_db)):
     """Retorna estatísticas básicas de uma loteria específica."""
@@ -42,7 +66,7 @@ async def get_lottery_stats(lottery_name: str, limit: int = 100, db: Session = D
     
     results = (
         db.query(LotteryResult)
-        .filter(LotteryResult.lottery_name.ilike(db_name))
+        .filter(LotteryResult.lottery_name == db_name)
         .order_by(LotteryResult.draw_date.desc())
         .limit(limit)
         .all()

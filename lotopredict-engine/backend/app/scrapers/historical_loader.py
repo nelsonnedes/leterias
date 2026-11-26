@@ -15,10 +15,20 @@ from app.core.config import settings
 
 # Mapeamento oficial
 LOTTERIES = {
-    "megasena": {"db_name": "Megasena", "endpoint": "megasena"},
-    "lotofacil": {"db_name": "Lotofacil", "endpoint": "lotofacil"},
-    "quina":     {"db_name": "Quina",     "endpoint": "quina"}
+    "megasena": {"db_name": "Megasena", "endpoint": "megasena", "total": 60, "draw": 6},
+    "lotofacil": {"db_name": "Lotofacil", "endpoint": "lotofacil", "total": 25, "draw": 15},
+    "quina":     {"db_name": "Quina",     "endpoint": "quina", "total": 80, "draw": 5}
 }
+
+
+def validate_draw(numbers: list[int], key: str) -> bool:
+    """Rejeita registros impossíveis antes de persistir (integridade da base)."""
+    spec = LOTTERIES[key]
+    return (
+        len(numbers) == spec["draw"]
+        and len(set(numbers)) == spec["draw"]
+        and all(isinstance(n, int) and 1 <= n <= spec["total"] for n in numbers)
+    )
 
 # Cabeçalhos padrão para emular navegador e evitar bloqueios
 HEADERS = {
@@ -32,7 +42,8 @@ async def fetch_draw(
     lottery_endpoint: str,
     concurso: int,
     sem: asyncio.Semaphore,
-    db_name: str
+    db_name: str,
+    lottery_key: str,
 ) -> dict | None:
     """Busca um sorteio específico pela API oficial da Caixa utilizando semáforo."""
     url = f"https://servicebus2.caixa.gov.br/portaldeloterias/api/{lottery_endpoint}/{concurso}"
@@ -56,7 +67,7 @@ async def fetch_draw(
                     raw_numbers = data.get("listaDezenas", [])
                     numbers = sorted([int(n) for n in raw_numbers if str(n).isdigit()])
 
-                    if not numbers:
+                    if not validate_draw(numbers, lottery_key):
                         return None
 
                     return {
@@ -127,7 +138,7 @@ async def load_historical_data(force_lotteries: list[str] | None = None):
 
     targets = {k: v for k, v in LOTTERIES.items() if not force_lotteries or k in force_lotteries}
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient() as client:
         # 1. Obter o último concurso online de cada loteria
         latest_concursos: dict[str, int] = {}
         FALLBACKS = {"megasena": 2800, "lotofacil": 3140, "quina": 6470}
@@ -193,7 +204,7 @@ async def load_historical_data(force_lotteries: list[str] | None = None):
                 lote_num = (i // chunk_size) + 1
                 total_lotes = (len(missing_draws) + chunk_size - 1) // chunk_size
 
-                tasks = [fetch_draw(client, endpoint, c, sem, db_name) for c in chunk]
+                tasks = [fetch_draw(client, endpoint, c, sem, db_name, key) for c in chunk]
                 results = await asyncio.gather(*tasks)
 
                 valid_draws = [r for r in results if r is not None]
@@ -244,7 +255,7 @@ async def fill_gaps_from_loteria_json(force_lotteries: list[str] | None = None):
     targets = {k: v for k, v in LOTTERIES.items() if not force_lotteries or k in force_lotteries}
     session = SessionLocal()
 
-    async with httpx.AsyncClient(verify=False) as client:
+    async with httpx.AsyncClient() as client:
         for key, spec in targets.items():
             url = LOTERIA_JSON_URLS.get(key)
             if not url:
@@ -264,7 +275,7 @@ async def fill_gaps_from_loteria_json(force_lotteries: list[str] | None = None):
                     raw_nums = draw_info.get("dezenas") or draw_info.get("numeros") or []
                     numbers = sorted([int(n) for n in raw_nums if str(n).isdigit()])
                     date_str = draw_info.get("data") or draw_info.get("dataApuracao")
-                    if not numbers or not date_str:
+                    if not validate_draw(numbers, key) or not date_str:
                         continue
                     try:
                         draw_date = datetime.strptime(date_str, "%d/%m/%Y").date()
@@ -293,9 +304,6 @@ async def fill_gaps_from_loteria_json(force_lotteries: list[str] | None = None):
 
 
 if __name__ == "__main__":
-    import urllib3
-    urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
     import argparse
     parser = argparse.ArgumentParser(description="LotoPredict — Carga Histórica de Sorteios")
     parser.add_argument(

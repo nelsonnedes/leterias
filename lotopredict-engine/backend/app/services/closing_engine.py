@@ -1,9 +1,55 @@
 import itertools
 import random
 import math
-from typing import List, Set, Dict, Any, Tuple
+from typing import List, Set, Dict, Any, Tuple, Sequence
+
+
+def _to_mask(numbers: Sequence[int], index: Dict[int, int]) -> int:
+    """Converte uma combinação em bitmask para contagem de interseção rápida."""
+    mask = 0
+    for number in numbers:
+        mask |= 1 << index[number]
+    return mask
+
 
 class ClosingEngine:
+
+    @staticmethod
+    def compute_coverage(
+        selected_numbers: List[int],
+        game_size: int,
+        guarantee: int,
+        condition_hits: int,
+        games: List[List[int]],
+    ) -> Dict[str, Any]:
+        """Cobertura real de um conjunto de apostas (após filtros, por exemplo)."""
+        numbers = sorted(set(selected_numbers))
+        if len(numbers) < game_size or guarantee > condition_hits or condition_hits > min(game_size, len(numbers)):
+            return {"covered_subsets": 0, "total_subsets": 0, "coverage_pct": 0.0}
+
+        index = {number: idx for idx, number in enumerate(numbers)}
+        subsets = [
+            _to_mask(comb, index)
+            for comb in itertools.combinations(numbers, condition_hits)
+        ]
+        bet_masks = [
+            _to_mask(game, index)
+            for game in games
+            if set(game).issubset(index)
+        ]
+
+        covered = 0
+        for subset in subsets:
+            if any((bet & subset).bit_count() >= guarantee for bet in bet_masks):
+                covered += 1
+
+        total = len(subsets)
+        return {
+            "covered_subsets": covered,
+            "total_subsets": total,
+            "coverage_pct": round(covered / total * 100, 1) if total else 0.0,
+        }
+
     @staticmethod
     def generate_desdobramento(
         selected_numbers: List[int], 
@@ -28,21 +74,27 @@ class ClosingEngine:
         if condition_hits > n_total:
             return []
             
-        # 1. Gerar todas as apostas possíveis (combinações de tamanho game_size)
-        all_possible_bets = [set(comb) for comb in itertools.combinations(numbers, game_size)]
-        
-        # 2. Gerar todos os subconjuntos de sorteio a cobrir (combinações de tamanho condition_hits)
-        all_draw_subsets = [set(comb) for comb in itertools.combinations(numbers, condition_hits)]
-        
+        # 1/2. Bitmasks permitem contar interseções com bit_count() em vez de sets
+        index = {number: idx for idx, number in enumerate(numbers)}
+        all_possible_bets = [
+            _to_mask(comb, index)
+            for comb in itertools.combinations(numbers, game_size)
+        ]
+        all_draw_subsets = [
+            _to_mask(comb, index)
+            for comb in itertools.combinations(numbers, condition_hits)
+        ]
+
         uncovered_subsets = set(range(len(all_draw_subsets)))
-        
-        # 3. Mapear para cada aposta candidata quais índices de sorteio ela cobre (interseção >= guarantee)
+
+        # 3. Mapear para cada aposta quais subsets ela cobre (interseção >= guarantee)
         bet_cover_map = []
         for bet in all_possible_bets:
-            covered_indices = set()
-            for idx, subset in enumerate(all_draw_subsets):
-                if len(bet.intersection(subset)) >= guarantee:
-                    covered_indices.add(idx)
+            covered_indices = {
+                idx
+                for idx, subset in enumerate(all_draw_subsets)
+                if (bet & subset).bit_count() >= guarantee
+            }
             bet_cover_map.append(covered_indices)
             
         chosen_bets = []
@@ -62,7 +114,10 @@ class ClosingEngine:
             if best_bet_idx == -1 or max_new_cover == 0:
                 break
                 
-            chosen_bets.append(sorted(list(all_possible_bets[best_bet_idx])))
+            best_mask = all_possible_bets[best_bet_idx]
+            chosen_bets.append(
+                [number for number in numbers if best_mask & (1 << index[number])]
+            )
             # Remove da lista de descobertos os subsets cobertos por essa aposta selecionada
             uncovered_subsets.difference_update(bet_cover_map[best_bet_idx])
             
@@ -85,68 +140,72 @@ class ClosingEngine:
         
         Retorna (solucao_otimizada, historico_de_custo).
         """
-        numbers = sorted(list(set(selected_numbers)))
-        all_possible_bets = [set(comb) for comb in itertools.combinations(numbers, game_size)]
-        all_draw_subsets = [set(comb) for comb in itertools.combinations(numbers, condition_hits)]
+        numbers = sorted(set(selected_numbers))
+        if len(numbers) < game_size or guarantee > condition_hits or condition_hits > min(game_size, len(numbers)):
+            return [list(b) for b in initial_solution], [len(initial_solution)]
 
-        def compute_coverage(bets: List[List[int]]) -> int:
-            """Calcula quantos subsets de sorteio estão cobertos."""
-            covered = set()
-            for bet in bets:
-                bet_set = set(bet)
-                for idx, subset in enumerate(all_draw_subsets):
-                    if idx in covered:
-                        continue
-                    if len(bet_set.intersection(subset)) >= guarantee:
-                        covered.add(idx)
-            return len(covered)
+        index = {number: idx for idx, number in enumerate(numbers)}
+        bet_masks = [
+            _to_mask(comb, index)
+            for comb in itertools.combinations(numbers, game_size)
+        ]
+        subset_masks = [
+            _to_mask(comb, index)
+            for comb in itertools.combinations(numbers, condition_hits)
+        ]
+        total_subsets = len(subset_masks)
 
-        total_subsets = len(all_draw_subsets)
-        current = [list(b) for b in initial_solution]
+        def compute_coverage(masks: List[int]) -> int:
+            return sum(
+                1 for subset in subset_masks
+                if any((bet & subset).bit_count() >= guarantee for bet in masks)
+            )
+
+        def to_numbers(mask: int) -> List[int]:
+            return [number for number in numbers if mask & (1 << index[number])]
+
+        current = [
+            _to_mask(bet, index) for bet in initial_solution if set(bet).issubset(index)
+        ]
         current_coverage = compute_coverage(current)
-        best = [list(b) for b in current]
+        best = list(current)
         best_coverage = current_coverage
         cost_history = [len(current)]
 
         temp = initial_temp
-        for iteration in range(max_iterations):
-            if current_coverage >= total_subsets:
-                break
-
-            # Tenta remover uma aposta
-            if len(current) > 1:
-                idx_to_remove = random.randrange(len(current))
-                candidate = [list(b) for b in current]
-                candidate.pop(idx_to_remove)
-            else:
-                candidate = [list(b) for b in current]
-
-            # Tenta adicionar uma aposta diferente
-            existing_sets = [set(b) for b in candidate]
-            available_bets = [b for b in all_possible_bets if b not in existing_sets]
-            if available_bets:
-                bet_to_add = random.choice(available_bets)
-                candidate.append(sorted(bet_to_add))
+        for _ in range(max_iterations):
+            candidate = list(current)
+            # Com cobertura incompleta, tenta adicionar uma aposta nova; caso contrário, tenta remover.
+            if current_coverage < total_subsets:
+                existing = set(candidate)
+                available = [mask for mask in bet_masks if mask not in existing]
+                if available:
+                    candidate.append(random.choice(available))
+            elif len(candidate) > 1:
+                candidate.pop(random.randrange(len(candidate)))
 
             candidate_coverage = compute_coverage(candidate)
+            # Nunca aceita perder cobertura quando já se tem cobertura integral.
+            if current_coverage == total_subsets and candidate_coverage < total_subsets:
+                temp *= cooling_rate
+                continue
 
-            # Função de custo: minimizar número de apostas, maximizar cobertura
-            delta = (len(current) - len(candidate)) + (candidate_coverage - current_coverage) * 0.1
-
+            delta = (len(current) - len(candidate)) + (
+                candidate_coverage - current_coverage
+            ) * 0.1
             if delta > 0 or random.random() < math.exp(delta / max(temp, 0.001)):
                 current = candidate
                 current_coverage = candidate_coverage
-
                 if current_coverage > best_coverage or (
                     current_coverage == best_coverage and len(current) < len(best)
                 ):
-                    best = [list(b) for b in current]
+                    best = list(current)
                     best_coverage = current_coverage
 
             temp *= cooling_rate
             cost_history.append(len(current))
 
-        return best, cost_history
+        return [to_numbers(mask) for mask in best], cost_history
 
     @staticmethod
     def get_coverage_curve(

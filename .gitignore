@@ -30,3 +30,6 @@ opencode.json
 AGENTS.md
 session.json
 megasena_dump.html
+
+# Playwright MCP (snapshots gerados)
+.playwright-mcp/

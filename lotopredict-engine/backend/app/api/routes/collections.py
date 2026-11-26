@@ -47,7 +47,7 @@ async def create_collection(collection_data: CollectionCreate, db: Session = Dep
         db.rollback()
         raise HTTPException(
             status_code=500,
-            detail=f"Erro ao salvar a coleção no banco de dados: {str(e)}"
+            detail="Erro ao salvar a coleção. Tente novamente mais tarde."
         )
 
 @router.get("/collections", response_model=List[Dict[str, Any]])
@@ -85,7 +85,7 @@ async def delete_collection(collection_id: int, db: Session = Depends(get_db)):
         return {"message": "Coleção excluída com sucesso."}
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Erro ao excluir coleção: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erro ao excluir a coleção. Tente novamente mais tarde.")
 
 class CollectionUpdate(BaseModel):
     name: str = Field(..., min_length=2, max_length=100, description="Novo nome personalizado para a coleção")
@@ -106,7 +106,7 @@ async def update_collection(collection_id: int, update_data: CollectionUpdate, d
         return {"message": "Coleção atualizada com sucesso.", "id": col.id, "name": col.name}
     except Exception as e:
         db.rollback()
-        raise HTTPException(status_code=500, detail=f"Erro ao atualizar coleção: {str(e)}")
+        raise HTTPException(status_code=500, detail="Erro ao atualizar a coleção. Tente novamente mais tarde.")
 
 @router.get("/collections/{collection_id}", response_model=Dict[str, Any])
 async def get_collection_detail(collection_id: int, db: Session = Depends(get_db)):

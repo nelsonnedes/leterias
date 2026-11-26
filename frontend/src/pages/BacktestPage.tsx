@@ -9,7 +9,7 @@ export const BacktestPage: React.FC = () => {
   const [lottery, setLottery] = useState<string>('megasena');
   const [numDraws, setNumDraws] = useState<number>(100);
   const [numGamesPerDraw, setNumGamesPerDraw] = useState<number>(5);
-  const [strategy, setStrategy] = useState<string>('combined');
+  const [strategy, setStrategy] = useState<string>('uniform');
   const [fromStart, setFromStart] = useState<boolean>(true);
 
   // Jogos mais pontuados selecionados para salvar
@@ -17,8 +17,6 @@ export const BacktestPage: React.FC = () => {
   const [collectionName, setCollectionName] = useState<string>('');
   const [savedMessage, setSavedMessage] = useState<string | null>(null);
   const [minHits, setMinHits] = useState<number>(0);
-  const [targetHits, setTargetHits] = useState<number>(0);
-  const [targetRunning, setTargetRunning] = useState<boolean>(false);
 
   // Estados de resposta
   const [backtestResult, setBacktestResult] = useState<BacktestResponse | null>(null);
@@ -30,16 +28,14 @@ export const BacktestPage: React.FC = () => {
     setError(null);
     setSavedMessage(null);
     setSelectedGames([]);
-    if (targetHits > 0) setTargetRunning(true);
     try {
-      const data = await api.runBacktest(lottery, numDraws, numGamesPerDraw, strategy, fromStart, targetHits);
+      const data = await api.runBacktest(lottery, numDraws, numGamesPerDraw, strategy, fromStart);
       setBacktestResult(data);
     } catch (err: any) {
-      setError('Erro ao rodar simulação histórica. Certifique-se de que o backend possui histórico de concursos populado.');
+      setError('Não foi possível concluir a simulação. Tente novamente ou reduza a quantidade de concursos.');
       console.error(err);
     } finally {
       setLoading(false);
-      setTargetRunning(false);
     }
   };
 
@@ -63,8 +59,10 @@ export const BacktestPage: React.FC = () => {
       <div className="glow-spot bg-indigo-600 w-96 h-96 bottom-10 left-10"></div>
 
       <div>
-        <h2 className="text-3xl font-extrabold text-white">Simulador de Backtesting</h2>
-        <p className="text-gray-400 mt-1">Valide a eficácia do motor matemático preditivo confrontando palpites contra resultados históricos reais.</p>
+        <h2 className="text-3xl font-extrabold text-white">Simulador Histórico</h2>
+        <p className="text-gray-400 mt-1">
+          Veja como os jogos se comportariam diante de concursos já realizados. Serve para conferir se o gerador respeita as regras e produz distribuições plausíveis — não para medir capacidade de previsão.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -100,10 +98,11 @@ export const BacktestPage: React.FC = () => {
                 onChange={(e) => setStrategy(e.target.value)}
                 className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500 transition-all duration-300"
               >
-                <option value="ml_ensemble">IA Ensemble (ML 8 Features + Markov + Ciclos)</option>
-                <option value="combined">Híbrida (Frequência + Atraso + Tendência + Pares)</option>
-                <option value="frequency">Apenas Frequência (Mais sorteadas)</option>
-                <option value="delay">Apenas Atraso (Mais atrasadas)</option>
+                <option value="uniform">Uniforme (padrão — sem viés)</option>
+                <option value="combined">Ilustrativa: híbrida</option>
+                <option value="frequency">Ilustrativa: mais frequentes</option>
+                <option value="delay">Ilustrativa: mais atrasadas</option>
+                <option value="ml_ensemble">Ilustrativa: ensemble de ML</option>
               </select>
             </div>
 
@@ -150,20 +149,9 @@ export const BacktestPage: React.FC = () => {
               <span className="text-sm font-semibold text-gray-300">Simular desde o concurso mais antigo</span>
             </label>
 
-            <div className="space-y-2">
-              <label className="text-sm font-semibold text-gray-300">Meta de acertos (opcional)</label>
-              <select
-                value={targetHits}
-                onChange={(e) => setTargetHits(parseInt(e.target.value, 10))}
-                className="w-full bg-dark-bg border border-dark-border rounded-xl px-4 py-3 text-white focus:outline-none focus:border-blue-500"
-              >
-                <option value={0}>Desativada</option>
-                {Array.from({ length: lottery === 'lotofacil' ? 15 : lottery === 'quina' ? 5 : 6 }, (_, i) => (
-                  <option key={i + 1} value={i + 1}>{i + 1} acertos ou mais</option>
-                ))}
-              </select>
-              <p className="text-xs text-gray-500">O motor continuará gerando jogos até atingir a meta (limite de 500 tentativas).</p>
-            </div>
+            <p className="text-[11px] text-gray-400 leading-relaxed">
+              Cada concurso é independente: a chance combinatória é fixa. A simulação compara a distribuição observada com o esperado pelo acaso.
+            </p>
 
             <button
               onClick={handleRunBacktest}
@@ -175,13 +163,7 @@ export const BacktestPage: React.FC = () => {
               ) : (
                 <Play className="w-5 h-5 fill-current" />
               )}
-              <span>
-                {targetRunning
-                  ? 'Buscando jogos para a meta...'
-                  : loading
-                    ? 'Simulando no Passado...'
-                    : 'Iniciar Backtest'}
-              </span>
+              <span>{loading ? 'Simulando no Passado...' : 'Iniciar Backtest'}</span>
             </button>
           </div>
         </div>
@@ -191,18 +173,6 @@ export const BacktestPage: React.FC = () => {
           {error && (
             <div className="p-4 bg-red-950/20 border border-red-900/30 text-red-400 rounded-xl text-center text-sm font-medium">
               {error}
-            </div>
-          )}
-
-          {backtestResult && (backtestResult.target_hits ?? 0) > 0 && (
-            <div className={`p-4 rounded-xl text-sm font-semibold border ${
-              backtestResult.target_reached
-                ? 'bg-green-950/20 border-green-900/30 text-green-400'
-                : 'bg-yellow-950/20 border-yellow-900/30 text-yellow-400'
-            }`}>
-              Meta de {backtestResult.target_hits} acertos: {backtestResult.target_reached
-                ? `atingida em ${backtestResult.target_games?.length ?? 0} jogo(s).`
-                : 'não atingida dentro do limite de tentativas. Ajuste a meta ou a estratégia.'}
             </div>
           )}
 
@@ -237,6 +207,26 @@ export const BacktestPage: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {backtestResult.expected_distribution && (
+                <div role="note" className="glass-panel p-5 rounded-2xl border-l-4 border-l-blue-500/60 space-y-2">
+                  <h4 className="text-sm font-bold text-white">Observado × esperado pelo acaso</h4>
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                    {Object.entries(backtestResult.expected_distribution).map(([hits, expected]) => (
+                      <div key={hits} className="bg-dark-bg/60 border border-dark-border rounded-lg p-2 text-center">
+                        <div className="text-[10px] text-gray-400">{hits} acertos</div>
+                        <div className="text-sm font-bold text-white">
+                          {backtestResult.hits_distribution[hits] ?? 0}
+                          <span className="text-[10px] text-gray-400 font-normal"> / esperado {expected}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                  <p className="text-[11px] text-gray-400">
+                    {backtestResult.notice ?? 'Sem diferença significativa em relação ao acaso. Nenhum algoritmo altera a chance combinatória.'}
+                  </p>
+                </div>
+              )}
 
               {/* Distribuição de Acertos */}
               <div className="glass-panel p-6 rounded-2xl">
@@ -273,7 +263,7 @@ export const BacktestPage: React.FC = () => {
                 <div className="glass-panel p-6 rounded-2xl">
                   <div className="flex flex-wrap items-center justify-between gap-3 pb-3 border-b border-dark-border">
                     <h4 className="text-lg font-bold text-white flex items-center gap-2">
-                      <Award className="w-5 h-5 text-green-400" /> Jogos Mais Pontuados
+                      <Award className="w-5 h-5 text-green-400" /> Jogos com mais acertos no histórico (retrospectivo)
                     </h4>
                     <div className="flex items-center gap-2">
                       <label className="text-xs text-gray-400">Mín. acertos:</label>
@@ -290,8 +280,10 @@ export const BacktestPage: React.FC = () => {
                     </div>
                   </div>
 
-                  <p className="text-xs text-gray-500 mt-2">
-                    "N acertos" = quantidade exata de dezenas coincidentes. Números em{' '}
+                  <p className="text-xs text-gray-400 mt-2">
+                    Estes jogos já foram sorteados no passado. Escolher jogos que acertaram antes{' '}
+                    <strong className="text-white">não melhora</strong> a chance no próximo concurso — cada sorteio é independente.
+                    "N acertos" = quantidade exata de dezenas coincidentes; números em{' '}
                     <span className="text-green-400 font-bold">verde</span> foram acertados.
                   </p>
 

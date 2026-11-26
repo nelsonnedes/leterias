@@ -117,7 +117,7 @@ export const CollectionsPage: React.FC = () => {
 
       <div>
         <h2 className="text-3xl font-extrabold text-white">Minhas Coleções</h2>
-        <p className="text-gray-400 mt-1">Gerencie suas apostas salvas e execute a conferência de acertos instantaneamente contra a Caixa.</p>
+        <p className="text-gray-400 mt-1">Gerencie as apostas salvas neste dispositivo e confira os acertos contra o último concurso disponível na API.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -192,6 +192,11 @@ export const CollectionsPage: React.FC = () => {
             <div className="space-y-6">
               {/* Cabeçalho da Coleção */}
               <div className="glass-panel p-6 rounded-2xl relative overflow-hidden space-y-4">
+                {selectedCol.data_source === 'demo' && (
+                  <div role="status" className="p-3 bg-yellow-500/10 border border-yellow-500/30 text-yellow-300 rounded-xl text-xs">
+                    {selectedCol.notice ?? 'Conferência demonstrativa com dados fictícios. O backend não respondeu; este resultado não é uma conferência oficial.'}
+                  </div>
+                )}
                 <button
                   onClick={() => setSelectedCol(null)}
                   className="absolute top-4 right-4 p-2 bg-dark-bg/60 hover:bg-dark-card rounded-lg text-gray-400 hover:text-white transition-all cursor-pointer"
@@ -280,7 +285,7 @@ export const CollectionsPage: React.FC = () => {
                   </div>
                 ) : (
                   <div className="mt-4 text-sm text-yellow-500 bg-yellow-500/10 border border-yellow-500/20 p-3 rounded-lg">
-                    ⚠️ Nenhum concurso real encontrado no banco SQLite para realizar a conferência automática. Rode o Seeding.
+                    ⚠️ Nenhum concurso real disponível na API para esta loteria no momento. Tente novamente mais tarde.
                   </div>
                 )}
               </div>

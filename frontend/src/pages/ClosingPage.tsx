@@ -30,8 +30,10 @@ export const ClosingPage: React.FC = () => {
   const [showFilteredCount, setShowFilteredCount] = useState<number>(0);
   const [showAll, setShowAll] = useState<boolean>(false);
 
-  // Curva Custo x Probabilidade
+  // Curva de cobertura real (calculada no backend)
   const [coverageCurve, setCoverageCurve] = useState<{num_bets: number; coverage_pct: number}[]>([]);
+  const [requiredBets, setRequiredBets] = useState<number>(0);
+  const [effectiveCoverage, setEffectiveCoverage] = useState<number | null>(null);
 
   // Limitações de dezenas para evitar timeout / estouro de RAM no serverless
   const LOTTERY_SPECS: Record<string, {
@@ -146,7 +148,9 @@ export const ClosingPage: React.FC = () => {
     setSaveSuccess(false);
     setFilteredGames(null);
     setCoverageCurve([]);
-    
+    setRequiredBets(0);
+    setEffectiveCoverage(null);
+
     try {
       const displayLotteryName = lottery === 'megasena' ? 'Mega-Sena' : lottery === 'lotofacil' ? 'Lotofácil' : 'Quina';
       const data = await api.runFechamento({
@@ -162,12 +166,13 @@ export const ClosingPage: React.FC = () => {
       });
       
       // Pós-filtro: aplica filtros estatísticos sobre os jogos gerados
+      let filtered: number[][] = [];
       if (posFilter && data.games.length > 0) {
         const sumRange = getSumRange();
         const parityRange = getParityRange();
         const maxConsec = lottery === 'lotofacil' ? 3 : 2;
-        
-        const filtered = data.games.filter(game =>
+
+        filtered = data.games.filter(game =>
           isSumOk(game, sumRange.min, sumRange.max) &&
           isParityOk(game, parityRange.min, parityRange.max) &&
           isConsecutiveOk(game, maxConsec)
@@ -182,15 +187,35 @@ export const ClosingPage: React.FC = () => {
         setShowAll(true);
       }
 
-      // Curva de cobertura (simulada no frontend)
-      const curve = [];
-      const totalGames = data.games.length;
-      for (let i = 1; i <= Math.min(totalGames, 20); i++) {
-        const coverage = Math.min(100, Math.round((i / totalGames) * 85 + 15));
-        curve.push({ num_bets: i, coverage_pct: coverage });
+      // Curva de cobertura real, calculada pelo backend
+      try {
+        const curveData = await api.getCoverageCurve({
+          lottery_name: displayLotteryName,
+          selected_numbers: selectedNumbers,
+          guarantee,
+          condition_hits: conditionHits,
+        });
+        setCoverageCurve(curveData.curve);
+        setRequiredBets(curveData.required_bets);
+
+        if (posFilter) {
+          const measured = await api.checkCoverage({
+            lottery_name: displayLotteryName,
+            selected_numbers: selectedNumbers,
+            guarantee,
+            condition_hits: conditionHits,
+            games: filtered,
+          });
+          setEffectiveCoverage(measured.coverage_pct);
+          if (measured.coverage_pct < 100) {
+            // Nunca esconder jogos que sustentam a garantia
+            setShowAll(true);
+          }
+        }
+      } catch (err) {
+        console.warn('Não foi possível calcular a cobertura real:', err);
       }
-      setCoverageCurve(curve);
-      
+
       // Sugere um nome para a coleção
       setCollectionName(`Fechamento ${displayLotteryName} - ${selectedNumbers.length} Dezenas`);
     } catch (err: any) {
@@ -203,9 +228,10 @@ export const ClosingPage: React.FC = () => {
 
   const handleSaveCollection = async () => {
     if (!results || !collectionName.trim()) return;
+    const gamesToSave = showAll || !lastFilteredGames ? results.games : lastFilteredGames;
     try {
       const displayLotteryName = lottery === 'megasena' ? 'Mega-Sena' : lottery === 'lotofacil' ? 'Lotofácil' : 'Quina';
-      await api.saveCollection(collectionName.trim(), displayLotteryName, results.games);
+      await api.saveCollection(collectionName.trim(), displayLotteryName, gamesToSave);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
@@ -239,7 +265,7 @@ export const ClosingPage: React.FC = () => {
           <Layers className="w-8 h-8 text-blue-500" />
           Fechamentos Matemáticos
         </h2>
-        <p className="text-gray-400 mt-1">Gere desdobramentos combinatórios puros e garanta premiações com o menor custo se as dezenas forem sorteadas no seu conjunto.</p>
+        <p className="text-gray-400 mt-1">Gere desdobramentos combinatórios que cobrem combinações dentro de um conjunto de dezenas escolhido por você. Isso não aumenta a chance de acertar todos os números do sorteio.</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -418,11 +444,27 @@ export const ClosingPage: React.FC = () => {
 
               {/* Pós-filtro: indicador e redução */}
               {filteredGames && posFilter && (
-                <div className="p-4 bg-green-950/20 border border-green-900/30 rounded-xl flex items-center gap-3 text-sm">
-                  <ShieldCheck className="w-5 h-5 text-green-400" />
+                <div className={`p-4 rounded-xl flex items-center gap-3 text-sm ${
+                  effectiveCoverage !== null && effectiveCoverage < 100
+                    ? 'bg-red-950/20 border border-red-900/40'
+                    : 'bg-green-950/20 border border-green-900/30'
+                }`}>
+                  <ShieldCheck className={`w-5 h-5 ${effectiveCoverage !== null && effectiveCoverage < 100 ? 'text-red-400' : 'text-green-400'}`} />
                   <div>
-                    <span className="text-green-400 font-bold">Pós-filtro aplicado!</span>
-                    <span className="text-gray-400 ml-2">{showFilteredCount} jogos removidos por critérios estatísticos (soma, paridade, consecutivos).</span>
+                    <span className={`font-bold ${effectiveCoverage !== null && effectiveCoverage < 100 ? 'text-red-400' : 'text-green-400'}`}>
+                      Pós-filtro aplicado
+                    </span>
+                    <span className="text-gray-400 ml-2">
+                      {showFilteredCount} jogos removidos por critérios de formato (soma, paridade, consecutivos).
+                      {effectiveCoverage !== null && (
+                        <> Cobertura efetiva após o filtro: <strong className="text-white">{effectiveCoverage}%</strong>.</>
+                      )}
+                    </span>
+                    {effectiveCoverage !== null && effectiveCoverage < 100 && (
+                      <p className="text-xs text-red-300 mt-1">
+                        A garantia original não está assegurada: apostas que sustentavam a cobertura foram removidas. Os jogos completos foram reexibidos.
+                      </p>
+                    )}
                   </div>
                 </div>
               )}
@@ -430,8 +472,11 @@ export const ClosingPage: React.FC = () => {
               {/* Curva Custo x Probabilidade */}
               {coverageCurve.length > 0 && (
                 <div className="glass-panel p-4 rounded-xl border-l-4 border-l-blue-500/50">
-                  <h4 className="text-xs font-bold text-white mb-2">📈 Curva de Cobertura (Custo x Probabilidade)</h4>
-                  <p className="text-[10px] text-gray-500 mb-3">Quanto mais apostas, maior a cobertura de combinações.</p>
+                  <h4 className="text-xs font-bold text-white mb-2">📈 Curva de Cobertura Real</h4>
+                  <p className="text-[10px] text-gray-400 mb-3">
+                    Cobertura calculada pelo motor para os subsets do seu conjunto.
+                    {requiredBets > 0 && ` Cobertura completa a partir de ${requiredBets} apostas.`}
+                  </p>
                   <div className="space-y-1.5">
                     {coverageCurve.filter((_, i) => i % Math.max(1, Math.floor(coverageCurve.length / 5)) === 0 || i === coverageCurve.length - 1).map(pt => (
                       <div key={pt.num_bets} className="flex items-center gap-2 text-[10px]">

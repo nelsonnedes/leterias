@@ -1,5 +1,6 @@
 import math
 import random
+import unicodedata
 from collections import Counter
 from typing import Dict, FrozenSet, List, Optional, Set, Tuple
 
@@ -19,7 +20,10 @@ class ProbabilityAlgorithms:
 
     @staticmethod
     def _normalize_lottery_name(lottery_name: str) -> str:
-        return lottery_name.lower().replace("-", "").replace(" ", "")
+        """Normaliza para a chave canônica, removendo acentos, hífens e espaços."""
+        decomposed = unicodedata.normalize("NFKD", lottery_name.lower())
+        plain = "".join(c for c in decomposed if not unicodedata.combining(c))
+        return plain.replace("-", "").replace(" ", "")
 
     @staticmethod
     def frequency_analysis(numbers_history: List[int], total_numbers: int = 60) -> Dict[int, float]:
@@ -420,40 +424,83 @@ class ProbabilityAlgorithms:
         population: List[int],
         weights: List[float],
         k: int,
+        rng: Optional[random.Random] = None,
     ) -> List[int]:
         """Amostragem ponderada sem reposição usando chaves exponenciais (Efraimidis-Spirakis)."""
+        source = rng or random
         keyed = []
         for item, w in zip(population, weights):
             safe_w = max(w, 1e-6)
-            u = max(random.random(), 1e-9)
+            u = max(source.random(), 1e-9)
             keyed.append((math.log(u) / safe_w, item))
         keyed.sort(reverse=True)
         return sorted(item for _, item in keyed[:k])
+
+    @staticmethod
+    def generate_uniform_games(
+        total_numbers: int,
+        numbers_to_draw: int,
+        num_games: int,
+        seed: Optional[int] = None,
+    ) -> List[List[int]]:
+        """Amostragem uniforme sem reposição, sem duplicatas e reproduzível por seed.
+
+        Este é o modo padrão: cada combinação é equiprovável e a chance agregada
+        de acertar todos os números é exatamente m / C(N,k).
+        """
+        if not 0 < numbers_to_draw <= total_numbers:
+            raise ValueError("Parâmetros de loteria inválidos.")
+
+        rng = random.Random(seed)
+        seen: Set[Tuple[int, ...]] = set()
+        max_attempts = max(1000, num_games * 200)
+        attempts = 0
+
+        while len(seen) < num_games and attempts < max_attempts:
+            game = tuple(sorted(rng.sample(range(1, total_numbers + 1), numbers_to_draw)))
+            seen.add(game)
+            attempts += 1
+
+        if len(seen) < num_games:
+            raise ValueError(
+                "Não foi possível gerar a quantidade solicitada de jogos distintos."
+            )
+
+        return [list(game) for game in sorted(seen)]
 
     @staticmethod
     def generate_prediction(
         numbers_history: List[List[int]],
         total_numbers: int = 60,
         numbers_to_draw: int = 6,
-        strategy: str = "combined",
+        strategy: str = "uniform",
         lottery_name: str = "megasena",
         num_games: int = 1,
+        seed: Optional[int] = None,
     ) -> List[List[int]]:
         """
-        Gera previsões estatísticas integrando frequência, atraso, tendência recente (janela deslizante),
-        afinidade de pares, terminadores e faixas dinâmicas de soma, passando pela esteira de validação.
+        Gera jogos. O modo `uniform` (padrão) amostra o universo inteiro de forma
+        equiprovável e sem duplicatas. Os demais modos são ilustrativos: usam
+        scores descritivos do histórico e filtros de formato, sem ganho de chance.
         """
+        rng = random.Random(seed)
+
+        if strategy == "uniform":
+            return ProbabilityAlgorithms.generate_uniform_games(
+                total_numbers, numbers_to_draw, num_games, seed
+            )
+
         if not numbers_history:
-            games = []
-            for idx in range(num_games):
-                chosen = None
-                for _ in range(500):
-                    nums = sorted(random.sample(range(1, total_numbers + 1), numbers_to_draw))
-                    if ProbabilityAlgorithms.validate_game(nums, lottery_name):
-                        chosen = nums
-                        break
-                games.append(chosen or sorted(random.sample(range(1, total_numbers + 1), numbers_to_draw)))
-            return games
+            games: Set[Tuple[int, ...]] = set()
+            attempts = 0
+            while len(games) < num_games and attempts < max(1000, num_games * 100):
+                nums = tuple(sorted(rng.sample(range(1, total_numbers + 1), numbers_to_draw)))
+                if ProbabilityAlgorithms.validate_game(list(nums), lottery_name):
+                    games.add(nums)
+                attempts += 1
+            while len(games) < num_games:
+                games.add(tuple(sorted(rng.sample(range(1, total_numbers + 1), numbers_to_draw))))
+            return [list(game) for game in sorted(games)]
 
         # Pré-computa frozensets e faixa dinâmica de soma uma única vez (O(N) -> O(1) por validação)
         historical_frozensets = {frozenset(d) for d in numbers_history}
@@ -477,7 +524,7 @@ class ProbabilityAlgorithms:
         max_attempts = max(600, candidates_target * 30)
         while len(valid_candidates) < candidates_target and attempts < max_attempts:
             nums = ProbabilityAlgorithms._weighted_sample_without_replacement(
-                best_numbers, best_weights, numbers_to_draw
+                best_numbers, best_weights, numbers_to_draw, rng=rng
             )
             key = tuple(nums)
             if key not in valid_candidates and ProbabilityAlgorithms.validate_game(
@@ -498,7 +545,7 @@ class ProbabilityAlgorithms:
             fallback_attempts = 0
             while len(valid_candidates) < num_games and fallback_attempts < 500:
                 nums = ProbabilityAlgorithms._weighted_sample_without_replacement(
-                    all_nums, all_weights, numbers_to_draw
+                    all_nums, all_weights, numbers_to_draw, rng=rng
                 )
                 key = tuple(nums)
                 if key not in valid_candidates and ProbabilityAlgorithms.validate_game(
@@ -535,8 +582,14 @@ class ProbabilityAlgorithms:
             selected_games.append(list(chosen_tuple))
             selected_sets.append(set(chosen_tuple))
 
-        # Segurança final caso ainda falte algum jogo
-        while len(selected_games) < num_games:
-            selected_games.append(sorted(random.sample(range(1, total_numbers + 1), numbers_to_draw)))
+        # Segurança final: completa com jogos uniformes e distintos (nunca duplicatas)
+        final_seen = {tuple(game) for game in selected_games}
+        attempts = 0
+        while len(final_seen) < num_games and attempts < max(1000, num_games * 100):
+            game = tuple(sorted(rng.sample(range(1, total_numbers + 1), numbers_to_draw)))
+            final_seen.add(game)
+            attempts += 1
+        if len(final_seen) < num_games:
+            raise ValueError("Não foi possível gerar a quantidade solicitada de jogos distintos.")
 
-        return selected_games
+        return [list(game) for game in sorted(final_seen)]

@@ -162,7 +162,7 @@ function App() {
               <h1 className="text-xl font-extrabold tracking-tight text-white m-0 p-0 leading-none">
                 LotoPredict <span className="bg-gradient-to-r from-blue-400 to-indigo-400 bg-clip-text text-transparent font-normal">Engine</span>
               </h1>
-              <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Matemática Preditiva v1.0</span>
+              <span className="text-[10px] text-gray-500 uppercase tracking-widest font-bold">Gerador de Jogos v2.0</span>
             </div>
           </div>
 
@@ -250,6 +250,9 @@ function App() {
 
           {/* Textos Centralizados */}
           <div className="space-y-1.5 text-center">
+            <p className="m-0 text-gray-400">
+              Jogo responsável: apostas são entretenimento, não investimento. Nenhum método aumenta a chance combinatória de acertar todos os números. Venda e uso proibidos para menores de 18 anos.
+            </p>
             <p className="m-0">© 2026 LotoPredict Engine. Construído sob fundamentos matemáticos e de probabilidade.</p>
             <p className="m-0 text-gray-500 flex flex-wrap items-center justify-center gap-1.5">
               <span>Desenvolvedor: <span className="font-bold text-gray-400">Nelson Brito</span></span>

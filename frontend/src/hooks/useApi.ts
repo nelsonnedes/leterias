@@ -58,19 +58,46 @@ export interface LotteryStats {
   all_frequencies?: Record<string, number>;
 }
 
+export interface OddsInfo {
+  lottery: string;
+  lottery_key: string;
+  universe_size: number;
+  draw_size: number;
+  total_combinations: number;
+  all_hits: {
+    probability_per_game: number;
+    denominator_per_game: number;
+    probability_with_games: number;
+    denominator_with_games: number;
+    games: number;
+    formula: string;
+  };
+  notice: string;
+  data_source?: 'api' | 'demo';
+}
+
 export interface PredictionResponse {
   lottery: string;
   strategy_used: string;
+  mode?: 'uniform' | 'illustrative';
+  seed?: number | null;
   total_historical_draws_analyzed: number;
   games: number[][];
+  distinct_games?: number;
+  odds?: OddsInfo['all_hits'];
+  notice?: string;
+  data_source?: 'api' | 'demo';
 }
 
 export interface BacktestResponse {
   lottery: string;
   strategy_tested: string;
+  mode?: 'uniform' | 'illustrative';
+  seed?: number | null;
   concursos_simulados: number;
   total_apostas_simuladas: number;
   hits_distribution: Record<string, number>;
+  expected_distribution?: Record<string, number>;
   rewards_summary: Record<string, number>;
   hits_by_draw?: {
     concurso: number;
@@ -83,15 +110,8 @@ export interface BacktestResponse {
     concurso: number;
     hit_numbers?: number[];
   }[];
-  target_hits?: number;
-  target_games?: {
-    game: number[];
-    hits: number;
-    concurso: number;
-    hit_numbers?: number[];
-  }[];
-  target_reached?: boolean;
   from_start?: boolean;
+  notice?: string;
   simulations_detail: {
     reference: string;
     real_numbers: number[];
@@ -144,7 +164,50 @@ export interface CollectionDetail {
     hits_count: number;
     award_achieved: string;
   }[];
+  data_source?: 'api' | 'demo';
+  notice?: string;
 }
+
+export interface CoverageCurveResponse {
+  lottery: string;
+  curve: { num_bets: number; coverage_pct: number }[];
+  required_bets: number;
+  final_coverage_pct: number;
+}
+
+export interface CoverageResult {
+  covered_subsets: number;
+  total_subsets: number;
+  coverage_pct: number;
+}
+
+const canonicalLotteryKey = (name: string): string => {
+  const normalized = name
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+  if (normalized.includes('mega')) return 'megasena';
+  if (normalized.includes('facil')) return 'lotofacil';
+  if (normalized.includes('quina')) return 'quina';
+  return normalized;
+};
+
+const awardForHits = (lotteryKey: string, hits: number): string => {
+  if (lotteryKey === 'megasena') {
+    if (hits === 6) return 'Sena';
+    if (hits === 5) return 'Quina';
+    if (hits === 4) return 'Quadra';
+  } else if (lotteryKey === 'lotofacil') {
+    if (hits >= 11) return `${hits} Acertos`;
+  } else if (lotteryKey === 'quina') {
+    if (hits === 5) return 'Quina';
+    if (hits === 4) return 'Quadra';
+    if (hits === 3) return 'Terno';
+    if (hits === 2) return 'Duque';
+  }
+  return 'Nenhum';
+};
 
 // Helper para verificar se o erro foi de conexão recusada ou offline
 // Trata 404 como 'backend indisponível' para ativar fallback offline (ex: Vercel sem backend)
@@ -191,27 +254,38 @@ export const useApi = () => {
   // Gerar palpites inteligentes
   const getPredict = async (
     lotteryName: string,
-    numGames: number = 1,
-    strategy: string = 'combined'
+    numGames: number = 5,
+    strategy: string = 'uniform',
+    seed?: number | null
   ): Promise<PredictionResponse> => {
     try {
       const res = await api.get(`/lottery/${lotteryName}/predict`, {
-        params: { num_games: numGames, strategy }
+        params: { num_games: numGames, strategy, seed: seed ?? undefined }
       });
-      return res.data;
+      return { ...res.data, data_source: 'api' };
     } catch (err: any) {
       if (isNetworkError(err)) {
-        console.warn('API local offline. Rodando motor preditivo no cliente.');
+        console.warn('API local offline. Gerando jogos no navegador (modo demonstração).');
         const games = generateMockGames(lotteryName, numGames, strategy);
         return {
           lottery: lotteryName.toUpperCase(),
           strategy_used: strategy,
+          mode: 'illustrative',
           total_historical_draws_analyzed: MOCK_DRAWS[lotteryName]?.length || 0,
-          games
+          games,
+          notice: 'Modo demonstração: o backend não respondeu e nenhum modelo foi executado.'
         };
       }
       throw err;
     }
+  };
+
+  // Odds combinatórias exatas (fonte única de probabilidade)
+  const getOdds = async (lotteryName: string, numGames: number = 1): Promise<OddsInfo> => {
+    const res = await api.get(`/lottery/${lotteryName}/odds`, {
+      params: { num_games: numGames }
+    });
+    return { ...res.data, lottery_key: canonicalLotteryKey(lotteryName), data_source: 'api' } as OddsInfo;
   };
 
   // Rodar simulação histórica (backtest)
@@ -219,13 +293,19 @@ export const useApi = () => {
     lotteryName: string,
     numDraws: number = 100,
     numGamesPerDraw: number = 5,
-    strategy: string = 'combined',
+    strategy: string = 'uniform',
     fromStart: boolean = false,
-    targetHits: number = 0
+    seed?: number | null
   ): Promise<BacktestResponse> => {
     try {
       const res = await api.post(`/lottery/${lotteryName}/backtest`, null, {
-        params: { num_draws: numDraws, num_games_per_draw: numGamesPerDraw, strategy, from_start: fromStart, target_hits: targetHits }
+        params: {
+          num_draws: numDraws,
+          num_games_per_draw: numGamesPerDraw,
+          strategy,
+          from_start: fromStart,
+          seed: seed ?? undefined
+        }
       });
       return res.data;
     } catch (err: any) {
@@ -294,25 +374,6 @@ export const useApi = () => {
           );
         const top_games = [...allOfflineGames].sort((a, b) => b.hits - a.hits).slice(0, 50);
 
-        let target_games = allOfflineGames.filter((g) => g.hits >= targetHits && targetHits > 0);
-        let targetAttempts = 0;
-        while (targetHits > 0 && target_games.length === 0 && targetAttempts < 200) {
-          const refDraw = availableDraws[targetAttempts % Math.max(availableDraws.length, 1)];
-          if (!refDraw) break;
-          for (const game of generateMockGames(lotteryName, numGamesPerDraw, strategy)) {
-            const hit_numbers = game.filter((n) => refDraw.numbers.includes(n));
-            const item = {
-              game,
-              hits: hit_numbers.length,
-              concurso: refDraw.concurso,
-              hit_numbers,
-            };
-            allOfflineGames.push(item);
-            if (hit_numbers.length >= targetHits) target_games.push(item);
-          }
-          targetAttempts += 1;
-        }
-
         return {
           lottery: lotteryName.toUpperCase(),
           strategy_tested: strategy,
@@ -321,11 +382,9 @@ export const useApi = () => {
           hits_distribution,
           rewards_summary,
           hits_by_draw,
-          top_games: [...top_games, ...target_games].sort((a, b) => b.hits - a.hits).slice(0, 50),
-          target_hits: targetHits,
-          target_games,
-          target_reached: target_games.length > 0,
+          top_games,
           from_start: true,
+          notice: 'Modo demonstração: backend indisponível. Jogos gerados localmente com dados fictícios; sem valor preditivo.',
           simulations_detail
         };
       }
@@ -353,11 +412,36 @@ export const useApi = () => {
     }));
   };
 
-  // Obter detalhes da coleção e conferir acertos (apenas localStorage)
+  // Detalhes da coleção: conferência contra o último concurso real quando a API responde
   const getCollectionDetail = async (id: number): Promise<CollectionDetail> => {
     const detail = getLocalCollectionDetail(id);
-    if (detail) return detail;
-    throw new Error('Coleção não encontrada neste dispositivo.');
+    if (!detail) throw new Error('Coleção não encontrada neste dispositivo.');
+
+    const lotteryKey = canonicalLotteryKey(detail.lottery_name);
+    try {
+      const latest = await getLatestDraw(lotteryKey);
+      const realSet = new Set(latest.numbers);
+      return {
+        ...detail,
+        last_real_draw: {
+          reference: latest.reference,
+          draw_date: latest.draw_date,
+          numbers: latest.numbers,
+        },
+        checking_summary: detail.checking_summary.map((res) => {
+          const hits = res.game.filter((n) => realSet.has(n)).length;
+          return { ...res, hits_count: hits, award_achieved: awardForHits(lotteryKey, hits) };
+        }),
+        data_source: 'api',
+      };
+    } catch (err) {
+      console.warn('API indisponível: conferência demonstrativa com dados fictícios.');
+      return {
+        ...detail,
+        data_source: 'demo',
+        notice: 'Conferência demonstrativa: o backend não respondeu e foram usados concursos fictícios de exemplo. Este resultado não vale como conferência oficial.',
+      };
+    }
   };
 
   // Excluir uma coleção (apenas localStorage)
@@ -372,6 +456,48 @@ export const useApi = () => {
     return { message: 'Coleção atualizada com sucesso.' };
   };
 
+  // Último concurso real de uma loteria (para conferência honesta)
+  const getLatestDraw = async (lotteryName: string): Promise<{
+    lottery_name: string;
+    reference: string;
+    draw_date: string;
+    numbers: number[];
+    source_url?: string;
+  }> => {
+    const res = await api.get(`/lottery/${canonicalLotteryKey(lotteryName)}/latest`);
+    return res.data;
+  };
+
+  // Curva de cobertura real, calculada pelo backend
+  const getCoverageCurve = async (params: {
+    lottery_name: string;
+    selected_numbers: number[];
+    guarantee: number;
+    condition_hits: number;
+  }): Promise<CoverageCurveResponse> => {
+    const res = await api.get('/fechamento/coverage-curve', {
+      params: {
+        lottery_name: params.lottery_name,
+        selected_numbers: params.selected_numbers.join(','),
+        guarantee: params.guarantee,
+        condition_hits: params.condition_hits,
+      },
+    });
+    return res.data;
+  };
+
+  // Mede a cobertura efetiva de um conjunto de apostas (ex.: após pós-filtro)
+  const checkCoverage = async (params: {
+    lottery_name: string;
+    selected_numbers: number[];
+    guarantee: number;
+    condition_hits: number;
+    games: number[][];
+  }): Promise<CoverageResult> => {
+    const res = await api.post('/fechamento/coverage', params);
+    return res.data;
+  };
+
   // Executar fechamento combinatório
   const runFechamento = async (params: FechamentoParams): Promise<FechamentoResult> => {
     try {
@@ -380,8 +506,8 @@ export const useApi = () => {
     } catch (err: any) {
       if (isNetworkError(err)) {
         console.warn('API local offline. Executando fechamento combinatório no cliente.');
-        const lot = params.lottery_name.toLowerCase();
-        const gameSize = lot.includes('mega') ? 6 : lot.includes('facil') ? 15 : 5;
+        const lot = canonicalLotteryKey(params.lottery_name);
+        const gameSize = lot === 'megasena' ? 6 : lot === 'lotofacil' ? 15 : 5;
         const localGames = runLocalFechamento(
           params.selected_numbers,
           gameSize,
@@ -405,7 +531,11 @@ export const useApi = () => {
   return {
     getStats,
     getPredict,
+    getOdds,
     runBacktest,
+    getLatestDraw,
+    getCoverageCurve,
+    checkCoverage,
     saveCollection,
     listCollections,
     getCollectionDetail,
