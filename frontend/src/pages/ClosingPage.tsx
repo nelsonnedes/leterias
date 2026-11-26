@@ -35,6 +35,10 @@ export const ClosingPage: React.FC = () => {
   const [requiredBets, setRequiredBets] = useState<number>(0);
   const [effectiveCoverage, setEffectiveCoverage] = useState<number | null>(null);
 
+  // Preenchimento rápido do volante (critérios descritivos, não preditivos)
+  const [quickLoading, setQuickLoading] = useState<boolean>(false);
+  const [quickMessage, setQuickMessage] = useState<string | null>(null);
+
   // Limitações de dezenas para evitar timeout / estouro de RAM no serverless
   const LOTTERY_SPECS: Record<string, {
     total: number;
@@ -71,6 +75,7 @@ export const ClosingPage: React.FC = () => {
   };
 
   const currentSpec = LOTTERY_SPECS[lottery];
+  const displayLotteryName = lottery === 'megasena' ? 'Mega-Sena' : lottery === 'lotofacil' ? 'Lotofácil' : 'Quina';
 
   const handleLotteryChange = (newLottery: string) => {
     setLottery(newLottery);
@@ -103,6 +108,70 @@ export const ClosingPage: React.FC = () => {
     setResults(null);
     setError(null);
     setSaveSuccess(false);
+    setQuickMessage(null);
+  };
+
+  const handleQuickSelect = async (mode: 'hot' | 'cold' | 'mix' | 'collections') => {
+    setQuickLoading(true);
+    setQuickMessage(null);
+    setError(null);
+    setResults(null);
+    setSaveSuccess(false);
+
+    try {
+      const limit = currentSpec.maxAllowed;
+      let chosen: number[] = [];
+
+      if (mode === 'collections') {
+        const collections = await api.listCollections();
+        const sameLottery = collections.filter((c) => c.lottery_name === displayLotteryName);
+        const targets = sameLottery.length > 0 ? sameLottery : collections;
+        if (targets.length === 0) {
+          setQuickMessage('Você ainda não tem coleções salvas neste dispositivo.');
+          return;
+        }
+        const counts = new Map<number, number>();
+        for (const col of targets) {
+          const detail = await api.getCollectionDetail(col.id);
+          for (const res of detail.checking_summary) {
+            for (const n of res.game) counts.set(n, (counts.get(n) ?? 0) + 1);
+          }
+        }
+        chosen = [...counts.entries()]
+          .sort((a, b) => b[1] - a[1] || a[0] - b[0])
+          .map(([n]) => n);
+        if (chosen.length === 0) {
+          setQuickMessage('As coleções salvas ainda não contêm jogos para esta loteria.');
+          return;
+        }
+        setQuickMessage(
+          `${targets.length} coleção(ões) usadas como referência. Seleção descritiva — sem ganho de chance.`,
+        );
+      } else {
+        const stats = await api.getStats(lottery, 300);
+        const hot = (stats.most_common_numbers ?? []).map(([n]) => n);
+        const cold = (stats.least_common_numbers ?? []).map(([n]) => n);
+        if (mode === 'hot') chosen = hot;
+        else if (mode === 'cold') chosen = cold;
+        else {
+          const half = Math.floor(limit / 2);
+          chosen = [...hot.slice(0, half), ...cold.slice(0, limit - half)];
+        }
+        chosen = [...new Set(chosen)].slice(0, limit);
+        if (chosen.length === 0) {
+          setQuickMessage('Não há histórico suficiente para preencher as dezenas.');
+          return;
+        }
+        setQuickMessage('Volante preenchido com estatísticas descritivas (quentes/frios). Isso não aumenta a chance de acerto.');
+      }
+
+      setSelectedNumbers(chosen.slice(0, limit).sort((a, b) => a - b));
+    } catch (err) {
+      console.error('Erro no preenchimento rápido:', err);
+      setQuickMessage('Não foi possível buscar os dados. Tente novamente.');
+    } finally {
+      setQuickLoading(false);
+    }
   };
 
   // Filtros estatísticos (mesmos do mockData) para pós-processamento
@@ -152,7 +221,6 @@ export const ClosingPage: React.FC = () => {
     setEffectiveCoverage(null);
 
     try {
-      const displayLotteryName = lottery === 'megasena' ? 'Mega-Sena' : lottery === 'lotofacil' ? 'Lotofácil' : 'Quina';
       const data = await api.runFechamento({
         lottery_name: displayLotteryName,
         selected_numbers: selectedNumbers,
@@ -230,7 +298,6 @@ export const ClosingPage: React.FC = () => {
     if (!results || !collectionName.trim()) return;
     const gamesToSave = showAll || !lastFilteredGames ? results.games : lastFilteredGames;
     try {
-      const displayLotteryName = lottery === 'megasena' ? 'Mega-Sena' : lottery === 'lotofacil' ? 'Lotofácil' : 'Quina';
       await api.saveCollection(collectionName.trim(), displayLotteryName, gamesToSave);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
@@ -293,6 +360,55 @@ export const ClosingPage: React.FC = () => {
                 );
               })}
             </div>
+          </div>
+
+          {/* Preenchimento rápido das dezenas */}
+          <div className="glass-panel p-5 rounded-2xl space-y-3">
+            <h3 className="text-sm font-bold text-white">Preencher dezenas automaticamente</h3>
+            <p className="text-[10px] text-gray-400 leading-relaxed">
+              Atalhos para montar o volante. Nenhum deles aumenta a chance combinatória de acerto.
+            </p>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                disabled={quickLoading}
+                onClick={() => handleQuickSelect('hot')}
+                className="px-2 py-2.5 rounded-xl bg-dark-bg/60 border border-dark-border hover:border-blue-500/60 text-[11px] font-bold text-gray-200 cursor-pointer disabled:opacity-50"
+              >
+                Números quentes
+                <span className="block text-[9px] font-normal text-gray-500">mais frequentes no histórico</span>
+              </button>
+              <button
+                type="button"
+                disabled={quickLoading}
+                onClick={() => handleQuickSelect('cold')}
+                className="px-2 py-2.5 rounded-xl bg-dark-bg/60 border border-dark-border hover:border-blue-500/60 text-[11px] font-bold text-gray-200 cursor-pointer disabled:opacity-50"
+              >
+                Números frios
+                <span className="block text-[9px] font-normal text-gray-500">menos frequentes no histórico</span>
+              </button>
+              <button
+                type="button"
+                disabled={quickLoading}
+                onClick={() => handleQuickSelect('mix')}
+                className="px-2 py-2.5 rounded-xl bg-dark-bg/60 border border-dark-border hover:border-blue-500/60 text-[11px] font-bold text-gray-200 cursor-pointer disabled:opacity-50"
+              >
+                Mix quentes + frios
+                <span className="block text-[9px] font-normal text-gray-500">metade de cada grupo</span>
+              </button>
+              <button
+                type="button"
+                disabled={quickLoading}
+                onClick={() => handleQuickSelect('collections')}
+                className="px-2 py-2.5 rounded-xl bg-dark-bg/60 border border-dark-border hover:border-blue-500/60 text-[11px] font-bold text-gray-200 cursor-pointer disabled:opacity-50"
+              >
+                Mix das minhas coleções
+                <span className="block text-[9px] font-normal text-gray-500">dezenas mais usadas nos jogos salvos</span>
+              </button>
+            </div>
+            {quickMessage && (
+              <p role="status" className="text-[10px] text-blue-300 leading-relaxed">{quickLoading ? 'Buscando dados...' : quickMessage}</p>
+            )}
           </div>
 
           {/* Regras e Garantias */}
