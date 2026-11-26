@@ -44,7 +44,7 @@ export const GeneratorPage: React.FC<GeneratorPageProps> = ({ initialLottery = '
     try {
       const data = await api.getPredict(lottery, numGames, strategy);
       setGeneratedGames(data.games);
-      setOfflineNotice(data.notice ?? null);
+      setOfflineNotice(data.data_source === 'demo' ? (data.notice ?? null) : null);
     } catch (err: any) {
       setError('Não foi possível gerar os jogos. Tente novamente ou escolha outra modalidade.');
       console.error(err);
