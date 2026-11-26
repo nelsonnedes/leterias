@@ -253,7 +253,10 @@ function App() {
             <p className="m-0 text-gray-400">
               Jogo responsável: apostas são entretenimento, não investimento. Nenhum método aumenta a chance combinatória de acertar todos os números. Venda e uso proibidos para menores de 18 anos.
             </p>
-            <p className="m-0">© 2026 LotoPredict Engine. Construído sob fundamentos matemáticos e de probabilidade.</p>
+            <p className="m-0">
+              © 2026 LotoPredict Engine. Construído sob fundamentos matemáticos e de probabilidade.{' '}
+              <a href="/blog/lancamento-v2.html" className="text-blue-400 hover:text-blue-300 underline">Leia o anúncio da v2</a>
+            </p>
             <p className="m-0 text-gray-500 flex flex-wrap items-center justify-center gap-1.5">
               <span>Desenvolvedor: <span className="font-bold text-gray-400">Nelson Brito</span></span>
               <span className="hidden sm:inline text-gray-700">|</span>

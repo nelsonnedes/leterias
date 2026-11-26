@@ -18,6 +18,10 @@ O LotoPredict ajuda usuários a montar jogos para Mega-Sena, Lotofácil e Quina.
 - Com m jogos distintos, a chance é m/C(N,k). A quantidade de jogos é a única alavanca real.
 - Nenhuma técnica quântica ou IA aumenta essa probabilidade.
 
+## Artigos
+
+- [LotoPredict v2 — odds transparentes, sem promessa de acerto](https://frontend-delta-six-13.vercel.app/blog/lancamento-v2.html)
+
 ## Documentação
 
 - [Análise e plano de refinamento](https://github.com/nelsonnedes/leterias/blob/main/docs/analise-e-plano-refinamento-gerador.md)

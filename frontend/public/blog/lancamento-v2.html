@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>LotoPredict v2 — odds transparentes, sem promessa de acerto</title>
+    <meta name="description" content="Lançamento do LotoPredict v2: gerador de jogos com amostragem uniforme, odds combinatórias exatas, simulador histórico e fechamentos com cobertura real." />
+    <link rel="canonical" href="https://frontend-delta-six-13.vercel.app/blog/lancamento-v2.html" />
+    <meta property="og:type" content="article" />
+    <meta property="og:title" content="LotoPredict v2 — odds transparentes, sem promessa de acerto" />
+    <meta property="og:description" content="Um gerador de jogos que mostra a matemática em vez de prometer prêmio." />
+    <meta property="og:url" content="https://frontend-delta-six-13.vercel.app/blog/lancamento-v2.html" />
+    <style>
+      body { margin: 0 auto; max-width: 760px; padding: 40px 20px; background: #090a0f; color: #d1d5db; font: 16px/1.7 system-ui, sans-serif; }
+      h1 { color: #fff; font-size: 2rem; line-height: 1.2; }
+      h2 { color: #fff; margin-top: 2rem; }
+      a { color: #60a5fa; }
+      code { background: #12141c; padding: 2px 6px; border-radius: 4px; }
+      .card { background: #12141c; border: 1px solid #1e2230; border-radius: 12px; padding: 18px; margin: 24px 0; }
+    </style>
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "Article",
+        "headline": "LotoPredict v2 — odds transparentes, sem promessa de acerto",
+        "description": "Lançamento do LotoPredict v2, um gerador de jogos de loteria que mostra as odds combinatórias reais.",
+        "inLanguage": "pt-BR",
+        "datePublished": "2026-11-26",
+        "author": { "@type": "Organization", "name": "LotoPredict" },
+        "mainEntityOfPage": "https://frontend-delta-six-13.vercel.app/blog/lancamento-v2.html"
+      }
+    </script>
+  </head>
+  <body>
+    <p><a href="/">← Voltar ao LotoPredict</a></p>
+    <h1>LotoPredict v2: odds transparentes, sem promessa de acerto</h1>
+    <p><strong>26 de novembro de 2026.</strong> Lançamos a versão 2 do <a href="/">LotoPredict</a>, uma ferramenta gratuita para montar jogos da Mega-Sena, Lotofácil e Quina. O diferencial não é "prever números" — é mostrar a matemática sem maquiagem.</p>
+
+    <div class="card">
+      <strong>Apesar do nome, a ferramenta não prevê resultados.</strong> Cada concurso é independente. A chance de acertar todos os números com um jogo é <code>1/C(N,k)</code>: 1 em 50.063.860 na Mega-Sena, 1 em 3.268.760 na Lotofácil e 1 em 24.040.016 na Quina. Com <code>m</code> jogos distintos, a chance é <code>m/C(N,k)</code> — e o custo cresce na mesma proporção.
+    </div>
+
+    <h2>O que mudou na v2</h2>
+    <ul>
+      <li><strong>Gerador uniforme por padrão:</strong> amostragem sem reposição, sem duplicatas e com seed opcional para auditoria.</li>
+      <li><strong>Odds exibidas:</strong> denominadores inteiros calculados com combinações exatas.</li>
+      <li><strong>Simulador histórico honesto:</strong> distribuição observada comparada com a expectativa hipergeométrica; a antiga "meta de acertos" foi removida por ser viés de seleção.</li>
+      <li><strong>Fechamentos:</strong> cobertura real calculada pelo backend, com curva de cobertura e aviso quando um pós-filtro anula a garantia.</li>
+      <li><strong>Conferência de coleções:</strong> usa o concurso mais recente da Caixa, com aviso quando a fonte estiver desatualizada.</li>
+      <li><strong>Grupo de jogos:</strong> jogos de todos os geradores são acumulados e salvos juntos em uma coleção no dispositivo.</li>
+    </ul>
+
+    <h2>Por que construir algo que diz "não funciona"?</h2>
+    <p>Muitos geradores sugerem que existe um jeito inteligente de escolher números. Não existe. O que existe é a possibilidade de escolher mal: jogos duplicados, vieses de amostragem e promessas que confundem entretenimento com investimento. O LotoPredict tenta fazer o contrário — tornar visíveis as odds e as limitações.</p>
+
+    <p>É um projeto informativo e de entretenimento, para maiores de 18 anos. Código aberto em <a href="https://github.com/nelsonnedes/leterias">github.com/nelsonnedes/leterias</a>.</p>
+
+    <p><a href="/">Experimentar o LotoPredict →</a></p>
+  </body>
+</html>
