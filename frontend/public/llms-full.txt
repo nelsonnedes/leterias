@@ -1,0 +1,32 @@
+# LotoPredict — informações completas
+
+Site: https://frontend-delta-six-13.vercel.app/
+Idioma: pt-BR
+Custo: gratuito, sem cadastro
+Código-fonte: https://github.com/nelsonnedes/leterias
+
+## O que é
+
+LotoPredict é uma aplicação web para gerar sugestões de jogos de loteria e analisar resultados históricos. Funciona no navegador, salva coleções localmente e consulta uma API FastAPI hospedada no Render para geração, odds e conferência do último concurso real da Caixa.
+
+## Modalidades
+
+- Mega-Sena: universo de 60 dezenas, 6 sorteadas, 50.063.860 combinações possíveis.
+- Lotofácil: universo de 25 dezenas, 15 sorteadas, 3.268.760 combinações.
+- Quina: universo de 80 dezenas, 5 sorteadas, 24.040.016 combinações.
+
+## Funcionalidades
+
+1. Gerador de jogos: modo uniforme padrão (amostragem equiprovável sem reposição, deduplicação e seed opcional) e modos ilustrativos baseados em frequência, atraso e scores descritivos.
+2. Simulador histórico: distribuição observada de acertos comparada com a hipergeométrica teórica, com aviso sobre viés de seleção em jogos retrospectivos.
+3. Fechamentos matemáticos: algoritmo de cobertura combinatória para garantir acertos mínimos condicionais dentro de um conjunto escolhido de dezenas; mostra curva de cobertura real e permite controlar a quantidade de jogos.
+4. Minhas coleções: salvamento local dos jogos e conferência contra o concurso mais recente da Caixa, com aviso quando a fonte estiver desatualizada.
+5. Grupo de jogos pendente: jogos de todos os geradores são acumulados em um grupo e salvos juntos em uma coleção.
+
+## Limites probabilísticos (declaração editorial)
+
+Cada concurso é um evento independente. A chance de acertar todos os números com um jogo é 1/C(N,k) e não é aumentada por IA, filtros, números quentes/frios ou técnicas quânticas. Com m jogos distintos, a chance é m/C(N,k). A única forma de aumentar a chance é comprar mais jogos, com custo proporcional. O conteúdo é informativo e voltado ao entretenimento; jogo responsável e restrição aos maiores de 18 anos.
+
+## Dados e privacidade
+
+Coleções são armazenadas apenas no dispositivo do usuário (localStorage). A conferência usa o último concurso real obtido da API oficial da Caixa, com fallback para o banco local quando a fonte não responde.

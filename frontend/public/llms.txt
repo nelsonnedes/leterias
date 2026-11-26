@@ -1,0 +1,24 @@
+# LotoPredict
+
+> Gerador de jogos de loteria com odds combinatórias transparentes, simulação histórica e fechamentos combinatórios. Site em português do Brasil, gratuito, sem cadastro.
+
+O LotoPredict ajuda usuários a montar jogos para Mega-Sena, Lotofácil e Quina. O modo padrão usa amostragem uniforme sem reposição, sem duplicatas e com seed reproduzível. O sistema mostra as odds reais de cada modalidade e deixa claro que nenhum algoritmo aumenta a chance combinatória de acertar todos os números.
+
+## Recursos
+
+- [Gerador de jogos](https://frontend-delta-six-13.vercel.app/): escolha de loteria, estilo de seleção, quantidade de jogos e odds exibidas.
+- [Simulador histórico](https://frontend-delta-six-13.vercel.app/): comparação entre distribuição observada e expectativa hipergeométrica.
+- [Fechamentos matemáticos](https://frontend-delta-six-13.vercel.app/): cobertura combinatória de conjuntos de dezenas, com preenchimento rápido e grupo de jogos persistente.
+- [Minhas coleções](https://frontend-delta-six-13.vercel.app/): salvamento local de jogos e conferência contra o último concurso real da Caixa.
+
+## Fatos importantes
+
+- Cada concurso é independente; a chance de acertar todos os números é 1/C(N,k) por jogo.
+- Mega-Sena: 1 em 50.063.860. Lotofácil: 1 em 3.268.760. Quina: 1 em 24.040.016.
+- Com m jogos distintos, a chance é m/C(N,k). A quantidade de jogos é a única alavanca real.
+- Nenhuma técnica quântica ou IA aumenta essa probabilidade.
+
+## Documentação
+
+- [Análise e plano de refinamento](https://github.com/nelsonnedes/leterias/blob/main/docs/analise-e-plano-refinamento-gerador.md)
+- [Código-fonte](https://github.com/nelsonnedes/leterias)
